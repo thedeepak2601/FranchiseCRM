@@ -15,15 +15,14 @@ import {
   createMockInteraction,
   getMockLead,
   getMockLeads,
+  updateMockLead,
 } from '@/mocks/app-data'
 
 export const leadApiMock = {
   getLeads: getMockLeads,
   getLead: getMockLead,
   createLead: (data: CreateLeadRequest): Promise<Lead> => createMockLead(data),
-  updateLead: async (_name: string, _data: Partial<Lead>): Promise<Lead> => {
-    throw new Error('Mock updateLead is not implemented yet')
-  },
+  updateLead: (name: string, data: Partial<Lead>): Promise<Lead> => updateMockLead(name, data),
   deleteLead: async (_name: string): Promise<void> => undefined,
   assignLead: async (_name: string, _assignedTo: string): Promise<Lead> => {
     throw new Error('Mock assignLead is not implemented yet')
@@ -96,12 +95,12 @@ export const metricsApiMock = {
     avgResponseTime: number
     connectRate: number
   }> => ({
-    totalLeads: 5,
-    newToday: 1,
-    qualifiedThisWeek: 2,
-    convertedThisMonth: 1,
+    totalLeads: 18,
+    newToday: 3,
+    qualifiedThisWeek: 7,
+    convertedThisMonth: 2,
     avgResponseTime: 3.5,
-    connectRate: 68,
+    connectRate: 74,
   }),
 }
 

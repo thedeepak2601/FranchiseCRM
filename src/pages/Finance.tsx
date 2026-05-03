@@ -6,21 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
-
-const palette = {
-  bg: '#0B0D14',
-  bgCard: '#161A24',
-  border: '#1F2433',
-  text: '#E5E7EB',
-  textDim: '#9CA3AF',
-  textMute: '#6B7280',
-  violet: '#8B7CF6',
-  violetBg: 'rgba(139,124,246,0.08)',
-  emerald: '#10B981',
-  amber: '#F59E0B',
-  rose: '#F43F5E',
-  cyan: '#06B6D4',
-}
+import { useTheme } from '@/lib/theme-context'
 
 const financeStats = [
   { label: 'Total Revenue', value: '12.4Cr', change: '+12.5%', positive: true, icon: IndianRupee },
@@ -46,6 +32,7 @@ const invoices = [
 ]
 
 export default function Finance() {
+  const { palette } = useTheme()
   const [searchTerm, setSearchTerm] = useState('')
 
   return (
@@ -152,7 +139,7 @@ export default function Finance() {
                     <td className="p-4 text-sm font-mono" style={{ color: palette.violet }}>{txn.id}</td>
                     <td className="p-4 text-sm" style={{ color: palette.text }}>{txn.franchise}</td>
                     <td className="p-4 text-sm font-medium" style={{ color: palette.text }}>
-                      <span className={txn.type === 'credit' ? 'text-emerald-400' : 'text-rose-400'}>
+                      <span style={{ color: txn.type === 'credit' ? palette.emerald : palette.rose }}>
                         {txn.type === 'credit' ? '+' : '-'}₹{txn.amount.toLocaleString()}
                       </span>
                     </td>

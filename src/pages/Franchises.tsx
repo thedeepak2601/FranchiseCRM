@@ -6,20 +6,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
-
-const palette = {
-  bg: '#0B0D14',
-  bgCard: '#161A24',
-  border: '#1F2433',
-  text: '#E5E7EB',
-  textDim: '#9CA3AF',
-  textMute: '#6B7280',
-  violet: '#8B7CF6',
-  violetBg: 'rgba(139,124,246,0.08)',
-  emerald: '#10B981',
-  amber: '#F59E0B',
-  rose: '#F43F5E',
-}
+import { useTheme } from '@/lib/theme-context'
 
 const franchises = [
   { id: 'FR-001', name: 'Spice Route - Connaught Place', owner: 'Rajesh Kumar', location: 'Delhi NCR', revenue: 45.2, growth: 18, status: 'active', since: '2024-01' },
@@ -31,6 +18,7 @@ const franchises = [
 ]
 
 export default function Franchises() {
+  const { palette } = useTheme()
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
 

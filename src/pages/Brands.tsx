@@ -5,20 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-
-const palette = {
-  bg: '#0B0D14',
-  bgCard: '#161A24',
-  border: '#1F2433',
-  text: '#E5E7EB',
-  textDim: '#9CA3AF',
-  textMute: '#6B7280',
-  violet: '#8B7CF6',
-  violetBg: 'rgba(139,124,246,0.08)',
-  emerald: '#10B981',
-  amber: '#F59E0B',
-  cyan: '#06B6D4',
-}
+import { useTheme } from '@/lib/theme-context'
 
 const brands = [
   { id: 'BR-001', name: 'Spice Route', category: 'Restaurant', franchises: 24, revenue: 8.2, growth: 15, color: '#8B7CF6', status: 'active' },
@@ -28,6 +15,7 @@ const brands = [
 ]
 
 export default function Brands() {
+  const { palette } = useTheme()
   const [searchTerm, setSearchTerm] = useState('')
 
   return (

@@ -7,6 +7,16 @@ const app = express()
 const upload = multer({ storage: multer.memoryStorage() })
 const port = Number(process.env.OCR_PORT || 3001)
 
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204)
+  }
+  next()
+})
+
 function getCredentialsPath() {
   return process.env.GOOGLE_APPLICATION_CREDENTIALS || ''
 }
@@ -38,7 +48,7 @@ app.get('/health', (_req, res) => {
   const state = getCredentialState()
 
   res.json({
-    ok: true,
+    ok: state.visionReady,
     service: 'google-vision-ocr',
     visionReady: state.visionReady,
     credentialsConfigured: Boolean(state.credentialsPath),
@@ -79,7 +89,8 @@ app.post('/ocr', upload.single('file'), async (req, res) => {
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'OCR request failed'
-    res.status(500).json({ error: message })
+    const status = message.includes('Google Vision credentials not configured') ? 503 : 500
+    res.status(status).json({ error: message })
   }
 })
 

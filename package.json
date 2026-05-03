@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "ocr:server": "node ./server/ocr-server.mjs",
+    "ocr:server": "node --env-file=.env ./server/ocr-server.mjs",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"

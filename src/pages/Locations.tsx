@@ -5,20 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-
-const palette = {
-  bg: '#0B0D14',
-  bgCard: '#161A24',
-  border: '#1F2433',
-  text: '#E5E7EB',
-  textDim: '#9CA3AF',
-  textMute: '#6B7280',
-  violet: '#8B7CF6',
-  violetBg: 'rgba(139,124,246,0.08)',
-  emerald: '#10B981',
-  amber: '#F59E0B',
-  rose: '#F43F5E',
-}
+import { useTheme } from '@/lib/theme-context'
 
 const locations = [
   { id: 'LOC-001', name: 'Delhi NCR', region: 'North', franchises: 12, revenue: 3.2, occupancy: 95, status: 'active' },
@@ -32,6 +19,7 @@ const locations = [
 ]
 
 export default function Locations() {
+  const { palette } = useTheme()
   const [searchTerm, setSearchTerm] = useState('')
   const [regionFilter, setRegionFilter] = useState('all')
 
@@ -145,7 +133,7 @@ export default function Locations() {
                     {location.occupancy}%
                   </span>
                 </div>
-                <div className="mt-1 h-1.5 rounded-full bg-gray-700">
+                <div className="mt-1 h-1.5 rounded-full" style={{ background: palette.border }}>
                   <div 
                     className="h-full rounded-full"
                     style={{ 

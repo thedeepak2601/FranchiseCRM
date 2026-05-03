@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Search, Plus, FileText, AlertCircle, UserPlus, Phone, Target, TrendingUp, Shield, Briefcase, Users, Upload, ScanText, Image as ImageIcon } from 'lucide-react'
+import { Search, Plus, FileText, AlertCircle, UserPlus, Phone, Target, TrendingUp, Shield, Briefcase, Users, Upload, ScanText, Image as ImageIcon, CheckCircle2, Clock, ListChecks, ShieldCheck, ChevronDown, SlidersHorizontal, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -7,25 +7,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
-import { LeadDetailPanel } from '@/components/leads'
-import { useCompleteTask, useCreateInteraction, useCreateLead, useLead, useLeads } from '@/hooks/useLeads'
+import { getLeadSubStage } from '@/lib/lead-stage'
+import { LeadDetailPanel, LeadDetailsForm } from '@/components/leads'
+import { useCompleteTask, useCreateInteraction, useCreateLead, useLead, useLeads, useUpdateLead } from '@/hooks/useLeads'
 import { extractLeadFieldsFromImage, getOcrBackendHealth } from '@/lib/lead-ocr'
 import { STAGE_CONFIG } from '@/types/lead'
-import type { CreateLeadRequest, LeadStage } from '@/types/lead'
+import type { CreateLeadRequest, Lead, LeadSource, LeadStage, LeadStatus } from '@/types/lead'
 import type { LeadOcrResult, OcrBackendHealth, OcrFieldKey } from '@/lib/lead-ocr'
-
-const palette = {
-  bgCard: '#161A24',
-  border: '#1F2433',
-  text: '#E5E7EB',
-  textMute: '#6B7280',
-  violet: '#8B7CF6',
-  violetBg: 'rgba(139,124,246,0.08)',
-  emerald: '#10B981',
-  amber: '#F59E0B',
-  rose: '#F43F5E',
-  cyan: '#06B6D4',
-}
+import { useTheme } from '@/lib/theme-context'
 
 const STAGE_ICONS = {
   lead_capture: UserPlus,
@@ -39,6 +28,7 @@ const STAGE_ICONS = {
 } satisfies Record<LeadStage, React.ElementType>
 
 export default function Leads() {
+  const { palette } = useTheme()
   const emptyLeadCaptureForm = {
     capturedAt: new Date().toISOString().slice(0, 16),
     name: '',
@@ -56,7 +46,12 @@ export default function Leads() {
 
   const [searchTerm, setSearchTerm] = useState('')
   const [stageFilter, setStageFilter] = useState<'all' | LeadStage>('all')
+  const [sourceFilter, setSourceFilter] = useState<'all' | LeadSource>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | LeadStatus>('all')
+  const [ownerFilter, setOwnerFilter] = useState('all')
+  const [expandedStageId, setExpandedStageId] = useState<LeadStage | null>(null)
   const [selectedLeadId, setSelectedLeadId] = useState('')
+  const [showLeadDetailsForm, setShowLeadDetailsForm] = useState(false)
   const [showLeadCaptureForm, setShowLeadCaptureForm] = useState(false)
   const [ocrFile, setOcrFile] = useState<File | null>(null)
   const [ocrPreviewUrl, setOcrPreviewUrl] = useState('')
@@ -90,17 +85,23 @@ export default function Leads() {
     () => ({
       search: searchTerm || undefined,
       stage: stageFilter === 'all' ? undefined : stageFilter,
+      source: sourceFilter === 'all' ? undefined : sourceFilter,
+      status: statusFilter === 'all' ? undefined : statusFilter,
+      assignedTo: ownerFilter === 'all' ? undefined : ownerFilter,
       page: 1,
       pageSize: 50,
     }),
-    [searchTerm, stageFilter]
+    [ownerFilter, searchTerm, sourceFilter, stageFilter, statusFilter]
   )
 
   const leadsQuery = useLeads(filters)
   const leads = leadsQuery.data?.data ?? []
+  const filterOptionsQuery = useLeads({ page: 1, pageSize: 500 })
+  const allLeads = filterOptionsQuery.data?.data ?? leads
   const selectedLeadName = selectedLeadId || leads[0]?.id || ''
   const leadDetailQuery = useLead(selectedLeadName)
   const createLead = useCreateLead()
+  const updateLead = useUpdateLead()
   const createInteraction = useCreateInteraction()
   const completeTask = useCompleteTask()
 
@@ -133,10 +134,101 @@ export default function Leads() {
     }
   }, [showLeadCaptureForm])
 
-  const selectedLead = leadDetailQuery.data?.lead ?? leads.find((lead) => lead.id === selectedLeadId)
+  useEffect(() => {
+    const closeOpenFormOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+
+      if (ocrReviewResult) {
+        setOcrReviewResult(null)
+        return
+      }
+
+      if (showLeadCaptureForm) {
+        closeLeadCaptureForm()
+      }
+    }
+
+    window.addEventListener('keydown', closeOpenFormOnEscape)
+    return () => window.removeEventListener('keydown', closeOpenFormOnEscape)
+  }, [ocrReviewResult, showLeadCaptureForm])
+
+  const selectedLeadDetail = leadDetailQuery.data?.lead.id === selectedLeadName ? leadDetailQuery.data : undefined
+  const selectedLead = selectedLeadDetail?.lead ?? leads.find((lead) => lead.id === selectedLeadId)
+  const selectedSubStage = selectedLead
+    ? getLeadSubStage(selectedLead, {
+        interactions: selectedLeadDetail?.interactions,
+        followUpTasks: selectedLeadDetail?.followUpTasks,
+        timeline: selectedLeadDetail?.timeline,
+      })
+    : null
   const stageEntries = Object.values(STAGE_CONFIG)
 
   const getStageIndex = (stageId: LeadStage) => stageEntries.findIndex((stage) => stage.id === stageId)
+  const selectedStageIndex = selectedLead ? getStageIndex(selectedLead.stage) : -1
+  const expandedStage = expandedStageId ? STAGE_CONFIG[expandedStageId] : null
+  const expandedStageIndex = expandedStage ? getStageIndex(expandedStage.id) : -1
+  const hasActiveFilters =
+    searchTerm.trim() !== '' ||
+    stageFilter !== 'all' ||
+    sourceFilter !== 'all' ||
+    statusFilter !== 'all' ||
+    ownerFilter !== 'all'
+
+  const uniqueSorted = <T extends string>(items: T[]) =>
+    Array.from(new Set(items.filter(Boolean))).sort((a, b) => a.localeCompare(b))
+
+  const sourceOptions = uniqueSorted(allLeads.map((lead) => lead.source))
+  const statusOptions = uniqueSorted(allLeads.map((lead) => lead.status))
+  const ownerOptions = uniqueSorted(allLeads.map((lead) => lead.assignedTo || lead.owner))
+
+  const matchesHeaderFilters = (lead: Lead) => {
+    const term = searchTerm.trim().toLowerCase()
+    const owner = lead.assignedTo || lead.owner
+    const searchable = [lead.id, lead.name, lead.email, lead.phone, lead.location, lead.state, owner]
+
+    return (
+      (!term || searchable.some((value) => value?.toLowerCase().includes(term))) &&
+      (sourceFilter === 'all' || lead.source === sourceFilter) &&
+      (statusFilter === 'all' || lead.status === statusFilter) &&
+      (ownerFilter === 'all' || owner === ownerFilter)
+    )
+  }
+
+  const stageSummaryLeads = allLeads.filter(matchesHeaderFilters)
+
+  const clearAllFilters = () => {
+    setSearchTerm('')
+    setStageFilter('all')
+    setSourceFilter('all')
+    setStatusFilter('all')
+    setOwnerFilter('all')
+  }
+
+  const handleStageHeaderClick = (stageId: LeadStage) => {
+    setExpandedStageId((current) => (current === stageId ? null : stageId))
+    setStageFilter(stageId)
+  }
+
+  const openLeadDetailsForm = (leadId: string) => {
+    setSelectedLeadId(leadId)
+    setShowLeadDetailsForm(true)
+  }
+
+  const handleLeadStatusChange = async (status: LeadStatus) => {
+    if (!selectedLead) return
+    await updateLead.mutateAsync({
+      name: selectedLead.id,
+      data: {
+        status,
+        updated: new Date().toISOString(),
+      },
+    })
+  }
+
+  const showAllStages = () => {
+    setStageFilter('all')
+    setExpandedStageId(null)
+  }
 
   const getScoreTone = (score: number) => {
     if (score >= 70) return { bg: palette.emerald + '20', color: palette.emerald }
@@ -269,6 +361,7 @@ export default function Leads() {
     const createdLead = await createLead.mutateAsync(payload)
     setSelectedLeadId(createdLead.id)
     setStageFilter('all')
+    setExpandedStageId(null)
     closeLeadCaptureForm()
   }
 
@@ -295,22 +388,107 @@ export default function Leads() {
 
   return (
     <div className="p-4 lg:p-6 space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold" style={{ color: palette.text }}>Leads & Pipeline</h1>
-          <p className="text-sm mt-1" style={{ color: palette.textMute }}>
-            End-to-end franchise lifecycle management from capture to post-sale
-          </p>
+      <div className="rounded-xl border p-4 lg:p-5" style={{ background: palette.bgCard, borderColor: palette.border }}>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold" style={{ color: palette.text }}>Leads & Pipeline</h1>
+            <p className="text-sm mt-1" style={{ color: palette.textMute }}>
+              End-to-end franchise lifecycle management from capture to post-sale.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Badge style={{ background: palette.violetBg, color: palette.violet }}>
+                {leads.length} visible leads
+              </Badge>
+              <Badge variant="secondary">
+                {stageFilter === 'all' ? 'All stages' : STAGE_CONFIG[stageFilter].name}
+              </Badge>
+              {selectedSubStage ? (
+                <Badge style={{ background: 'rgba(245,158,11,0.14)', color: palette.amber }}>
+                  {selectedSubStage.shortDisplay}
+                </Badge>
+              ) : null}
+              {hasActiveFilters ? (
+                <button
+                  type="button"
+                  onClick={clearAllFilters}
+                  className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs transition-colors hover:bg-white/5"
+                  style={{ borderColor: palette.border, color: palette.textDim }}
+                >
+                  <X className="h-3 w-3" />
+                  Clear filters
+                </button>
+              ) : null}
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" style={{ borderColor: palette.border, color: palette.text }}>
+              <FileText className="h-4 w-4 mr-2" />
+              Export
+            </Button>
+            <Button style={{ background: palette.violet }} onClick={() => (showLeadCaptureForm ? closeLeadCaptureForm() : setShowLeadCaptureForm(true))}>
+              <Plus className="h-4 w-4 mr-2" />
+              {showLeadCaptureForm ? 'Close Form' : 'Add Lead'}
+            </Button>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" style={{ borderColor: palette.border, color: palette.text }}>
-            <FileText className="h-4 w-4 mr-2" />
-            Export
-          </Button>
-          <Button style={{ background: palette.violet }} onClick={() => (showLeadCaptureForm ? closeLeadCaptureForm() : setShowLeadCaptureForm(true))}>
-            <Plus className="h-4 w-4 mr-2" />
-            {showLeadCaptureForm ? 'Close Form' : 'Add Lead'}
-          </Button>
+
+        <div className="mt-5 grid grid-cols-1 gap-3 lg:grid-cols-[minmax(280px,1fr)_180px_180px_220px]">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: palette.textMute }} />
+            <Input
+              placeholder="Search by lead, phone, email, city, owner..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="h-11 pl-10"
+              style={{ background: palette.bgElev, borderColor: palette.border, color: palette.text }}
+            />
+          </div>
+
+          <div className="relative">
+            <SlidersHorizontal className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: palette.textMute }} />
+            <select
+              value={sourceFilter}
+              onChange={(e) => setSourceFilter(e.target.value as 'all' | LeadSource)}
+              className="h-11 w-full appearance-none rounded-lg border py-2 pl-10 pr-9 text-sm capitalize outline-none"
+              style={{ background: palette.bgElev, borderColor: palette.border, color: palette.text }}
+            >
+              <option value="all">All Sources</option>
+              {sourceOptions.map((source) => (
+                <option key={source} value={source}>{source}</option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: palette.textMute }} />
+          </div>
+
+          <div className="relative">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as 'all' | LeadStatus)}
+              className="h-11 w-full appearance-none rounded-lg border px-3 pr-9 text-sm capitalize outline-none"
+              style={{ background: palette.bgElev, borderColor: palette.border, color: palette.text }}
+            >
+              <option value="all">All Statuses</option>
+              {statusOptions.map((status) => (
+                <option key={status} value={status}>{status.replace('_', ' ')}</option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: palette.textMute }} />
+          </div>
+
+          <div className="relative">
+            <select
+              value={ownerFilter}
+              onChange={(e) => setOwnerFilter(e.target.value)}
+              className="h-11 w-full appearance-none rounded-lg border px-3 pr-9 text-sm outline-none"
+              style={{ background: palette.bgElev, borderColor: palette.border, color: palette.text }}
+            >
+              <option value="all">All Owners</option>
+              {ownerOptions.map((owner) => (
+                <option key={owner} value={owner}>{owner}</option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: palette.textMute }} />
+          </div>
         </div>
       </div>
 
@@ -364,6 +542,11 @@ export default function Leads() {
                     <div>
                       {ocrBackendHealth?.message || 'Google Vision OCR requires either a valid API key or the local Vision server.'}
                     </div>
+                    {!ocrBackendHealth?.visionReady && !ocrBackendHealth?.credentialsConfigured && (
+                      <div>
+                        Set `GOOGLE_APPLICATION_CREDENTIALS` for the local OCR server, or use `VITE_GOOGLE_VISION_API_KEY` for direct Vision access.
+                      </div>
+                    )}
                     {ocrBackendHealth?.credentialsPath && (
                       <div className="break-all">
                         Credentials: {ocrBackendHealth.credentialsPath}
@@ -695,73 +878,236 @@ export default function Leads() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-2">
-        <button
-          onClick={() => setStageFilter('all')}
-          className={cn(
-            "p-3 rounded-lg border text-center transition-all",
-            stageFilter === 'all' && "ring-2 ring-offset-2 ring-offset-[#0B0D14]"
-          )}
-          style={{
-            background: stageFilter === 'all' ? palette.violetBg : palette.bgCard,
-            borderColor: stageFilter === 'all' ? palette.violet : palette.border,
-          }}
-        >
-          <div className="text-lg font-bold" style={{ color: palette.text }}>{leads.length}</div>
-          <div className="text-xs" style={{ color: palette.textMute }}>All Leads</div>
-        </button>
-        {stageEntries.map((stage) => {
-          const Icon = STAGE_ICONS[stage.id]
-          const count = leads.filter((lead) => lead.stage === stage.id).length
+      <div className="rounded-xl border overflow-hidden" style={{ background: palette.bgCard, borderColor: palette.border }}>
+        <div className="flex flex-col gap-4 border-b p-5 lg:flex-row lg:items-start lg:justify-between" style={{ borderColor: palette.border }}>
+          <div>
+            <div className="flex items-center gap-2">
+              <ListChecks className="h-5 w-5" style={{ color: palette.violet }} />
+              <h2 className="text-lg font-semibold" style={{ color: palette.text }}>Franchise Pipeline Stage Map</h2>
+            </div>
+            <p className="mt-1 max-w-3xl text-sm" style={{ color: palette.textMute }}>
+              Every stage includes the operating steps, controls, owner, and expected outcome from lead capture through post-sale management.
+            </p>
+          </div>
 
-          return (
-            <button
-              key={stage.id}
-              onClick={() => setStageFilter(stage.id)}
-              className={cn(
-                "p-3 rounded-lg border text-center transition-all",
-                stageFilter === stage.id && "ring-2 ring-offset-2 ring-offset-[#0B0D14]"
-              )}
-              style={{
-                background: stageFilter === stage.id ? stage.color + '20' : palette.bgCard,
-                borderColor: stageFilter === stage.id ? stage.color : palette.border,
-              }}
-            >
-              <Icon className="h-5 w-5 mx-auto mb-2" style={{ color: stage.color }} />
-              <div className="text-lg font-bold" style={{ color: palette.text }}>{count}</div>
-              <div className="text-xs" style={{ color: palette.textMute }}>{stage.name}</div>
-            </button>
-          )
-        })}
+          <button
+            type="button"
+            onClick={showAllStages}
+            className={cn(
+              "rounded-lg border px-4 py-3 text-left transition-all",
+              stageFilter === 'all' && "ring-2 ring-offset-2"
+            )}
+            style={{
+              background: stageFilter === 'all' ? palette.violetBg : 'transparent',
+              borderColor: stageFilter === 'all' ? palette.violet : palette.border,
+              color: palette.text,
+            }}
+          >
+            <div className="text-xs uppercase" style={{ color: palette.textMute }}>Total pipeline</div>
+            <div className="mt-1 flex items-end gap-2">
+              <span className="text-2xl font-bold">{stageSummaryLeads.length}</span>
+              <span className="pb-1 text-xs" style={{ color: palette.textMute }}>leads visible</span>
+            </div>
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 gap-px md:grid-cols-2 xl:grid-cols-4" style={{ background: palette.border }}>
+          {stageEntries.map((stage) => {
+            const Icon = STAGE_ICONS[stage.id]
+            const count = stageSummaryLeads.filter((lead) => lead.stage === stage.id).length
+            const stageIndex = getStageIndex(stage.id)
+            const isFiltered = stageFilter === stage.id
+            const isExpanded = expandedStageId === stage.id
+            const isCurrent = selectedLead?.stage === stage.id
+            const stageState =
+              selectedStageIndex < 0
+                ? 'Tracked stage'
+                : stageIndex < selectedStageIndex
+                  ? 'Completed'
+                  : stageIndex === selectedStageIndex
+                    ? 'Current stage'
+                    : 'Upcoming'
+
+            return (
+              <button
+                key={stage.id}
+                type="button"
+                onClick={() => handleStageHeaderClick(stage.id)}
+                className={cn(
+                  "min-h-[126px] bg-clip-padding p-4 text-left transition-all hover:bg-white/5",
+                  isFiltered && "relative z-10 ring-2 ring-offset-2"
+                )}
+                style={{
+                  background: isExpanded ? stage.color + '14' : isFiltered ? stage.color + '0F' : palette.bgCard,
+                  color: palette.text,
+                  borderColor: stage.color,
+                }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="flex h-10 w-10 items-center justify-center rounded-lg"
+                      style={{ background: stage.color + '18' }}
+                    >
+                      <Icon className="h-5 w-5" style={{ color: stage.color }} />
+                    </div>
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase" style={{ color: stage.color }}>
+                        Stage {stageIndex + 1}
+                      </div>
+                      <div className="text-sm font-semibold leading-snug" style={{ color: palette.text }}>
+                        {stage.name}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="text-right">
+                      <div className="text-xl font-bold" style={{ color: palette.text }}>{count}</div>
+                      <div className="text-[11px]" style={{ color: palette.textMute }}>leads</div>
+                    </div>
+                    <ChevronDown
+                      className={cn("mt-1 h-4 w-4 transition-transform", isExpanded && "rotate-180")}
+                      style={{ color: palette.textMute }}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Badge style={{ background: isCurrent ? stage.color + '22' : palette.violetBg, color: isCurrent ? stage.color : palette.textDim }}>
+                    {stageState}
+                  </Badge>
+                  {isCurrent && selectedSubStage ? (
+                    <Badge style={{ background: 'rgba(245,158,11,0.14)', color: palette.amber }}>
+                      {selectedSubStage.shortDisplay}
+                    </Badge>
+                  ) : null}
+                  <Badge variant="secondary">
+                    {stage.primaryOwner}
+                  </Badge>
+                  {stage.slaHours ? (
+                    <Badge style={{ background: 'rgba(245,158,11,0.14)', color: palette.amber }}>
+                      <Clock className="mr-1 h-3 w-3" />
+                      {stage.slaHours < 1 ? '30m SLA' : `${stage.slaHours}h SLA`}
+                    </Badge>
+                  ) : null}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+
+        {expandedStage && (
+          <div className="border-t p-5" style={{ borderColor: palette.border, background: palette.bgElev }}>
+            <div className="flex flex-col gap-5 xl:flex-row xl:items-start">
+              <div className="xl:w-[34%]">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="flex h-12 w-12 items-center justify-center rounded-lg"
+                    style={{ background: expandedStage.color + '18' }}
+                  >
+                    {(() => {
+                      const ExpandedIcon = STAGE_ICONS[expandedStage.id]
+                      return <ExpandedIcon className="h-5 w-5" style={{ color: expandedStage.color }} />
+                    })()}
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold uppercase" style={{ color: expandedStage.color }}>
+                      Stage {expandedStageIndex + 1}
+                    </div>
+                    <h3 className="text-lg font-semibold" style={{ color: palette.text }}>
+                      {expandedStage.name}
+                    </h3>
+                  </div>
+                </div>
+                <p className="mt-4 text-sm leading-relaxed" style={{ color: palette.textDim }}>
+                  {expandedStage.description}
+                </p>
+                <div className="mt-4 rounded-lg border p-3" style={{ borderColor: palette.border, background: palette.bgCard }}>
+                  <div className="text-xs font-semibold uppercase" style={{ color: palette.textMute }}>
+                    Expected outcome
+                  </div>
+                  <p className="mt-2 text-sm leading-relaxed" style={{ color: palette.text }}>
+                    {expandedStage.outcome}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid flex-1 grid-cols-1 gap-4 lg:grid-cols-3">
+                <div className="rounded-lg border p-4" style={{ borderColor: palette.border, background: palette.bgCard }}>
+                  <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase" style={{ color: palette.textMute }}>
+                    <ListChecks className="h-3.5 w-3.5" />
+                    Stage steps
+                  </div>
+                  <div className="space-y-2.5">
+                    {expandedStage.steps.map((step, stepIndex) => (
+                      <div key={step} className="flex gap-2">
+                        <span
+                          className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
+                          style={{ background: expandedStage.color + '18', color: expandedStage.color }}
+                        >
+                          {stepIndex + 1}
+                        </span>
+                        <span className="text-xs leading-relaxed" style={{ color: palette.textDim }}>
+                          {step}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border p-4" style={{ borderColor: palette.border, background: palette.bgCard }}>
+                  <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase" style={{ color: palette.textMute }}>
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                    Controls
+                  </div>
+                  <div className="space-y-2.5">
+                    {expandedStage.controls.map((control) => (
+                      <div key={control} className="flex items-center gap-2 text-xs" style={{ color: palette.textDim }}>
+                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0" style={{ color: expandedStage.color }} />
+                        {control}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border p-4" style={{ borderColor: palette.border, background: palette.bgCard }}>
+                  <div className="mb-3 text-xs font-semibold uppercase" style={{ color: palette.textMute }}>
+                    Ownership
+                  </div>
+                  <div className="text-sm font-semibold" style={{ color: palette.text }}>
+                    {expandedStage.primaryOwner}
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {expandedStage.supportingTeams.map((team) => (
+                      <Badge key={team} variant="secondary">
+                        {team}
+                      </Badge>
+                    ))}
+                  </div>
+                  <div className="mt-4 text-xs leading-relaxed" style={{ color: palette.textMute }}>
+                    {expandedStage.requiredInteractions} minimum interactions expected before movement.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-4">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: palette.textMute }} />
-              <Input
-                placeholder="Search leads..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-                style={{ background: palette.bgCard, borderColor: palette.border, color: palette.text }}
-              />
-            </div>
-            <select
-              value={stageFilter}
-              onChange={(e) => setStageFilter(e.target.value as 'all' | LeadStage)}
-              className="px-4 py-2 rounded-lg border capitalize"
-              style={{ background: palette.bgCard, borderColor: palette.border, color: palette.text }}
-            >
-              <option value="all">All Stages</option>
-              {stageEntries.map((stage) => (
-                <option key={stage.id} value={stage.id}>{stage.name}</option>
-              ))}
-            </select>
-          </div>
-
           <div className="rounded-xl border overflow-hidden" style={{ background: palette.bgCard, borderColor: palette.border }}>
+            <div className="flex flex-col gap-2 border-b p-4 sm:flex-row sm:items-center sm:justify-between" style={{ borderColor: palette.border }}>
+              <div>
+                <h2 className="text-base font-semibold" style={{ color: palette.text }}>Lead Register</h2>
+                <p className="text-xs" style={{ color: palette.textMute }}>
+                  Search and header filters are applied to this list.
+                </p>
+              </div>
+              <Badge variant="secondary">
+                {leads.length} records
+              </Badge>
+            </div>
             {leadsQuery.isLoading ? (
               <div className="p-8 text-center" style={{ color: palette.textMute }}>Loading leads...</div>
             ) : leadsQuery.isError ? (
@@ -791,6 +1137,8 @@ export default function Leads() {
                 <tbody>
                   {leads.map((lead) => {
                     const scoreTone = getScoreTone(lead.score)
+                    const leadStageConfig = STAGE_CONFIG[lead.stage]
+                    const leadSubStage = getLeadSubStage(lead)
 
                     return (
                       <tr
@@ -810,7 +1158,17 @@ export default function Leads() {
                               </AvatarFallback>
                             </Avatar>
                             <div>
-                              <p className="text-sm font-medium" style={{ color: palette.text }}>{lead.name}</p>
+                              <button
+                                type="button"
+                                className="text-left text-sm font-medium transition-colors hover:underline"
+                                style={{ color: palette.text }}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  openLeadDetailsForm(lead.id)
+                                }}
+                              >
+                                {lead.name}
+                              </button>
                               <p className="text-xs" style={{ color: palette.textMute }}>{lead.id}</p>
                             </div>
                           </div>
@@ -826,13 +1184,16 @@ export default function Leads() {
                                 className="h-full rounded-full"
                                 style={{
                                   width: `${((getStageIndex(lead.stage) + 1) / stageEntries.length) * 100}%`,
-                                  background: STAGE_CONFIG[lead.stage].color,
+                                  background: leadStageConfig.color,
                                 }}
                               />
                             </div>
-                            <span className="text-xs capitalize" style={{ color: palette.textMute }}>
-                              {STAGE_CONFIG[lead.stage].name}
+                            <span className="text-xs capitalize" style={{ color: palette.textMute }} title={leadStageConfig.name}>
+                              {leadStageConfig.shortName}
                             </span>
+                          </div>
+                          <div className="mt-1 max-w-[220px] truncate text-[11px]" style={{ color: palette.textMute }} title={leadSubStage.label}>
+                            {leadSubStage.shortDisplay}
                           </div>
                         </td>
                         <td className="p-4">
@@ -857,6 +1218,9 @@ export default function Leads() {
                           >
                             {lead.status.replace('_', ' ')}
                           </Badge>
+                          <div className="mt-1 text-[11px]" style={{ color: palette.textMute }}>
+                            {leadSubStage.index + 1}/{leadSubStage.total} sub-stage
+                          </div>
                         </td>
                       </tr>
                     )
@@ -889,10 +1253,10 @@ export default function Leads() {
             <Card style={{ background: palette.bgCard, borderColor: palette.border }} className="overflow-hidden">
               <LeadDetailPanel
                 lead={selectedLead}
-                interactions={leadDetailQuery.data?.interactions ?? []}
-                followUpTasks={leadDetailQuery.data?.followUpTasks ?? []}
-                timeline={leadDetailQuery.data?.timeline ?? []}
-                metrics={leadDetailQuery.data?.metrics}
+                interactions={selectedLeadDetail?.interactions ?? []}
+                followUpTasks={selectedLeadDetail?.followUpTasks ?? []}
+                timeline={selectedLeadDetail?.timeline ?? []}
+                metrics={selectedLeadDetail?.metrics}
                 onLogInteraction={(data) => createInteraction.mutate(data)}
                 onCompleteTask={(taskId) => completeTask.mutate(taskId)}
               />
@@ -900,6 +1264,19 @@ export default function Leads() {
           )}
         </div>
       </div>
+
+      {showLeadDetailsForm && selectedLead ? (
+        <LeadDetailsForm
+          lead={selectedLead}
+          interactions={selectedLeadDetail?.interactions ?? []}
+          followUpTasks={selectedLeadDetail?.followUpTasks ?? []}
+          timeline={selectedLeadDetail?.timeline ?? []}
+          metrics={selectedLeadDetail?.metrics}
+          onClose={() => setShowLeadDetailsForm(false)}
+          onStatusChange={handleLeadStatusChange}
+          isSavingStatus={updateLead.isPending}
+        />
+      ) : null}
     </div>
   )
 }

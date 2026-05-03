@@ -16,48 +16,14 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
-import type { 
-  InteractionChannel, 
-  InteractionOutcome, 
+import { useTheme } from '@/lib/theme-context'
+import type {
+  InteractionChannel,
+  InteractionOutcome,
   AttemptType,
   NextActionType,
-  CreateInteractionRequest 
+  CreateInteractionRequest
 } from '@/types/lead'
-
-const palette = {
-  bg: '#0B0D14',
-  bgCard: '#161A24',
-  border: '#1F2433',
-  text: '#E5E7EB',
-  textDim: '#9CA3AF',
-  textMute: '#6B7280',
-  violet: '#8B7CF6',
-  emerald: '#10B981',
-  amber: '#F59E0B',
-  rose: '#F43F5E',
-  cyan: '#06B6D4',
-}
-
-// Channel configuration
-const channelConfig: Record<InteractionChannel, { icon: React.ElementType; label: string; color: string }> = {
-  call: { icon: Phone, label: 'Call', color: palette.cyan },
-  whatsapp: { icon: MessageCircle, label: 'WhatsApp', color: '#25D366' },
-  email: { icon: Mail, label: 'Email', color: palette.violet },
-  sms: { icon: MessageSquare, label: 'SMS', color: palette.amber },
-  meeting: { icon: Calendar, label: 'Meeting', color: palette.emerald },
-  video_call: { icon: Video, label: 'Video Call', color: palette.cyan },
-}
-
-// Outcome configuration
-const outcomeConfig: Record<InteractionOutcome, { label: string; color: string; icon: React.ElementType }> = {
-  connected: { label: 'Connected', color: palette.emerald, icon: CheckCircle2 },
-  not_reachable: { label: 'Not Reachable', color: palette.rose, icon: XCircle },
-  busy: { label: 'Busy', color: palette.amber, icon: AlertCircle },
-  wrong_number: { label: 'Wrong Number', color: palette.rose, icon: XCircle },
-  not_interested: { label: 'Not Interested', color: palette.textMute, icon: XCircle },
-  no_response: { label: 'No Response', color: palette.amber, icon: Clock },
-  scheduled_callback: { label: 'Callback Scheduled', color: palette.cyan, icon: Calendar },
-}
 
 // Next action options
 const nextActionOptions: { value: NextActionType; label: string }[] = [
@@ -78,13 +44,34 @@ interface InteractionLoggerProps {
   className?: string
 }
 
-export function InteractionLogger({ 
-  leadId, 
+export function InteractionLogger({
+  leadId,
   leadName,
-  onSubmit, 
+  onSubmit,
   isLoading,
-  className 
+  className
 }: InteractionLoggerProps) {
+  const { palette } = useTheme()
+
+  const channelConfig: Record<InteractionChannel, { icon: React.ElementType; label: string; color: string }> = {
+    call: { icon: Phone, label: 'Call', color: palette.cyan },
+    whatsapp: { icon: MessageCircle, label: 'WhatsApp', color: '#25D366' },
+    email: { icon: Mail, label: 'Email', color: palette.violet },
+    sms: { icon: MessageSquare, label: 'SMS', color: palette.amber },
+    meeting: { icon: Calendar, label: 'Meeting', color: palette.emerald },
+    video_call: { icon: Video, label: 'Video Call', color: palette.cyan },
+  }
+
+  const outcomeConfig: Record<InteractionOutcome, { label: string; color: string; icon: React.ElementType }> = {
+    connected: { label: 'Connected', color: palette.emerald, icon: CheckCircle2 },
+    not_reachable: { label: 'Not Reachable', color: palette.rose, icon: XCircle },
+    busy: { label: 'Busy', color: palette.amber, icon: AlertCircle },
+    wrong_number: { label: 'Wrong Number', color: palette.rose, icon: XCircle },
+    not_interested: { label: 'Not Interested', color: palette.textMute, icon: XCircle },
+    no_response: { label: 'No Response', color: palette.amber, icon: Clock },
+    scheduled_callback: { label: 'Callback Scheduled', color: palette.cyan, icon: Calendar },
+  }
+
   const [isExpanded, setIsExpanded] = useState(false)
   
   // Form state

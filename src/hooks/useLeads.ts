@@ -16,6 +16,7 @@ import type {
   Lead,
   CreateLeadRequest,
   CreateInteractionRequest,
+  LeadSource,
   LeadStage,
   Interaction,
   FollowUpTask,
@@ -27,6 +28,7 @@ import type {
 
 export function useLeads(filters?: {
   stage?: LeadStage
+  source?: LeadSource
   status?: string
   assignedTo?: string
   search?: string

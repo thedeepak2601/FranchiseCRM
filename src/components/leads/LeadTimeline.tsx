@@ -17,36 +17,27 @@ import {
   XCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useTheme } from '@/lib/theme-context'
 import type { TimelineEvent, TimelineEventType } from '@/types/lead'
 
-const palette = {
-  bgCard: '#161A24',
-  border: '#1F2433',
-  text: '#E5E7EB',
-  textDim: '#9CA3AF',
-  textMute: '#6B7280',
-  violet: '#8B7CF6',
-  violetBg: 'rgba(139,124,246,0.08)',
-  emerald: '#10B981',
-  amber: '#F59E0B',
-  rose: '#F43F5E',
-  cyan: '#06B6D4',
-}
+type PaletteType = ReturnType<typeof useTheme>['palette']
 
-const eventConfig: Record<TimelineEventType, { icon: React.ElementType; color: string; bg: string }> = {
-  lead_created: { icon: UserPlus, color: palette.violet, bg: 'rgba(139,124,246,0.15)' },
-  lead_assigned: { icon: UserPlus, color: palette.cyan, bg: 'rgba(6,182,212,0.15)' },
-  interaction_logged: { icon: Phone, color: palette.cyan, bg: 'rgba(6,182,212,0.15)' },
-  stage_changed: { icon: ArrowRight, color: palette.amber, bg: 'rgba(245,158,11,0.15)' },
-  status_changed: { icon: TrendingUp, color: palette.amber, bg: 'rgba(245,158,11,0.15)' },
-  score_updated: { icon: Target, color: palette.emerald, bg: 'rgba(16,185,129,0.15)' },
-  qualification_completed: { icon: CheckCircle2, color: palette.emerald, bg: 'rgba(16,185,129,0.15)' },
-  lead_converted: { icon: ArrowRight, color: palette.emerald, bg: 'rgba(16,185,129,0.15)' },
-  follow_up_created: { icon: Calendar, color: palette.amber, bg: 'rgba(245,158,11,0.15)' },
-  follow_up_completed: { icon: CheckCircle2, color: palette.emerald, bg: 'rgba(16,185,129,0.15)' },
-  lead_disqualified: { icon: XCircle, color: palette.rose, bg: 'rgba(244,63,94,0.15)' },
-  note_added: { icon: MessageSquare, color: palette.textDim, bg: 'rgba(156,163,175,0.15)' },
-  document_uploaded: { icon: FileText, color: palette.cyan, bg: 'rgba(6,182,212,0.15)' },
+function buildEventConfig(p: PaletteType): Record<TimelineEventType, { icon: React.ElementType; color: string; bg: string }> {
+  return {
+    lead_created: { icon: UserPlus, color: p.violet, bg: 'rgba(139,124,246,0.15)' },
+    lead_assigned: { icon: UserPlus, color: p.cyan, bg: 'rgba(6,182,212,0.15)' },
+    interaction_logged: { icon: Phone, color: p.cyan, bg: 'rgba(6,182,212,0.15)' },
+    stage_changed: { icon: ArrowRight, color: p.amber, bg: 'rgba(245,158,11,0.15)' },
+    status_changed: { icon: TrendingUp, color: p.amber, bg: 'rgba(245,158,11,0.15)' },
+    score_updated: { icon: Target, color: p.emerald, bg: 'rgba(16,185,129,0.15)' },
+    qualification_completed: { icon: CheckCircle2, color: p.emerald, bg: 'rgba(16,185,129,0.15)' },
+    lead_converted: { icon: ArrowRight, color: p.emerald, bg: 'rgba(16,185,129,0.15)' },
+    follow_up_created: { icon: Calendar, color: p.amber, bg: 'rgba(245,158,11,0.15)' },
+    follow_up_completed: { icon: CheckCircle2, color: p.emerald, bg: 'rgba(16,185,129,0.15)' },
+    lead_disqualified: { icon: XCircle, color: p.rose, bg: 'rgba(244,63,94,0.15)' },
+    note_added: { icon: MessageSquare, color: p.textDim, bg: 'rgba(156,163,175,0.15)' },
+    document_uploaded: { icon: FileText, color: p.cyan, bg: 'rgba(6,182,212,0.15)' },
+  }
 }
 
 interface LeadTimelineProps {
@@ -55,6 +46,8 @@ interface LeadTimelineProps {
 }
 
 export function LeadTimeline({ events, className }: LeadTimelineProps) {
+  const { palette } = useTheme()
+  const eventConfig = buildEventConfig(palette)
   if (!events.length) {
     return (
       <div className={cn("p-8 text-center rounded-lg", className)} style={{ background: palette.bgCard }}>

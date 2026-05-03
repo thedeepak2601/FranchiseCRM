@@ -7,7 +7,7 @@
 // ENUMS
 // ============================================================
 
-export type LeadSource = 'website' | 'ads' | 'whatsapp' | 'referral' | 'portal' | 'facebook' | 'google' | 'other'
+export type LeadSource = 'website' | 'ads' | 'whatsapp' | 'referral' | 'portal' | 'facebook' | 'instagram' | 'google' | 'other'
 export type LeadStatus = 'new' | 'in_progress' | 'qualified' | 'nurture' | 'disqualified' | 'converted' | 'pending' | 'approved' | 'active' | 'cold'
 export type InteractionChannel = 'call' | 'whatsapp' | 'email' | 'sms' | 'meeting' | 'video_call'
 export type InteractionOutcome = 'connected' | 'not_reachable' | 'busy' | 'wrong_number' | 'not_interested' | 'no_response' | 'scheduled_callback'
@@ -92,7 +92,13 @@ export type LeadStage =
 export interface StageConfig {
   id: LeadStage
   name: string
+  shortName: string
   description: string
+  outcome: string
+  steps: string[]
+  controls: string[]
+  primaryOwner: string
+  supportingTeams: string[]
   slaHours?: number
   requiredInteractions: number
   color: string
@@ -102,8 +108,23 @@ export interface StageConfig {
 export const STAGE_CONFIG: Record<LeadStage, StageConfig> = {
   lead_capture: {
     id: 'lead_capture',
-    name: 'Lead Capture',
-    description: 'New lead captured from various sources',
+    name: 'Lead Capture & Assignment',
+    shortName: 'Capture',
+    description: 'Capture the enquiry, prevent duplicates, tag the source, and assign a clear sales owner.',
+    outcome: 'A clean, owned lead record ready for immediate outreach.',
+    steps: [
+      'Lead generated from website, ads, WhatsApp, portals, or referrals',
+      'Lead created in CRM with source and campaign details',
+      'Phone and email duplicate check completed',
+      'Sales owner assigned automatically or by the lead desk',
+    ],
+    controls: [
+      'Phone + email de-duplication',
+      'Source and campaign tagging',
+      'Sales owner assignment',
+    ],
+    primaryOwner: 'Sales',
+    supportingTeams: ['Marketing'],
     slaHours: 0,
     requiredInteractions: 0,
     color: '#8B7CF6',
@@ -112,7 +133,22 @@ export const STAGE_CONFIG: Record<LeadStage, StageConfig> = {
   first_contact: {
     id: 'first_contact',
     name: 'First Contact',
-    description: 'Initial outreach and connection attempts',
+    shortName: 'Contact',
+    description: 'Run the first outreach attempts and capture the prospect response before qualification.',
+    outcome: 'A contacted prospect with a logged response and next action.',
+    steps: [
+      'Call, WhatsApp, email, or SMS outreach attempted',
+      'Connection outcome recorded with exact timestamp',
+      'Callback or follow-up task scheduled when required',
+      'Lead readiness moved into qualification once contact is made',
+    ],
+    controls: [
+      'Every attempt logged',
+      'Follow-up created for no response or busy outcomes',
+      'No silent stage movement',
+    ],
+    primaryOwner: 'Sales',
+    supportingTeams: ['Manager'],
     slaHours: 0.5, // 30 minutes
     requiredInteractions: 1,
     color: '#06B6D4',
@@ -121,7 +157,23 @@ export const STAGE_CONFIG: Record<LeadStage, StageConfig> = {
   qualification: {
     id: 'qualification',
     name: 'Qualification',
-    description: 'Qualify lead based on budget, timeline, authority',
+    shortName: 'Qualify',
+    description: 'Validate budget, preferred territory, business experience, authority, and investment timeline.',
+    outcome: 'A scored lead that is either nurtured, disqualified, or converted to a franchise opportunity.',
+    steps: [
+      'Initial contact completed and qualification questions asked',
+      'Budget, location, and business experience captured',
+      'Lead score calculated from fit and intent signals',
+      'Qualified decision made: nurture, disqualify, or proceed',
+      'Qualified lead converted to franchise opportunity',
+    ],
+    controls: [
+      'Minimum investment threshold',
+      'Territory availability soft check',
+      'Manager review for borderline leads',
+    ],
+    primaryOwner: 'Sales',
+    supportingTeams: ['Manager'],
     slaHours: 24,
     requiredInteractions: 2,
     color: '#F59E0B',
@@ -129,8 +181,24 @@ export const STAGE_CONFIG: Record<LeadStage, StageConfig> = {
   },
   pipeline: {
     id: 'pipeline',
-    name: 'Pipeline',
-    description: 'Active opportunity in sales pipeline',
+    name: 'Franchise Sales Pipeline',
+    shortName: 'Pipeline',
+    description: 'Progress the qualified opportunity through NDA, pitch, discovery, and territory evaluation.',
+    outcome: 'A fully evaluated franchise opportunity ready for formal application and internal review.',
+    steps: [
+      'Opportunity created from qualified lead',
+      'NDA sent and signed',
+      'Franchise presentation shared',
+      'Discovery call or meeting completed',
+      'Location and territory evaluation recorded',
+    ],
+    controls: [
+      'Signed NDA mandatory',
+      'Meeting notes attached',
+      'Preferred territory documented',
+    ],
+    primaryOwner: 'Sales',
+    supportingTeams: ['Legal'],
     slaHours: 72,
     requiredInteractions: 3,
     color: '#3B82F6',
@@ -138,8 +206,24 @@ export const STAGE_CONFIG: Record<LeadStage, StageConfig> = {
   },
   approvals: {
     id: 'approvals',
-    name: 'Approvals',
-    description: 'Internal approvals (finance, legal)',
+    name: 'Application & Internal Approvals',
+    shortName: 'Approvals',
+    description: 'Route the franchise application through legal, finance, operations, and management review.',
+    outcome: 'A decisioned application with approval, rejection reason, or sales rework instructions.',
+    steps: [
+      'Franchise application submitted',
+      'Legal review completed',
+      'Finance review completed',
+      'Operations review completed',
+      'Management approval decision captured',
+    ],
+    controls: [
+      'Approved leads proceed to agreement',
+      'Rejected applications require a reason',
+      'Rework loops back to sales with notes',
+    ],
+    primaryOwner: 'Management',
+    supportingTeams: ['Legal', 'Finance', 'Operations'],
     slaHours: 48,
     requiredInteractions: 1,
     color: '#F43F5E',
@@ -147,8 +231,24 @@ export const STAGE_CONFIG: Record<LeadStage, StageConfig> = {
   },
   agreement: {
     id: 'agreement',
-    name: 'Agreement',
-    description: 'Contract signing and payment',
+    name: 'Agreement & Payment',
+    shortName: 'Agreement',
+    description: 'Complete contract signing, franchise fee invoicing, payment receipt, and verification.',
+    outcome: 'A paid and verified franchise agreement that can be handed to onboarding.',
+    steps: [
+      'Franchise agreement drafted',
+      'Digital signing completed',
+      'Franchise fee invoice generated',
+      'Payment received',
+      'Payment verified by finance',
+    ],
+    controls: [
+      'Agreement mandatory before customer creation',
+      'No payment means no onboarding',
+      'Finance verification required',
+    ],
+    primaryOwner: 'Legal',
+    supportingTeams: ['Finance', 'Sales'],
     slaHours: 24,
     requiredInteractions: 2,
     color: '#10B981',
@@ -156,8 +256,24 @@ export const STAGE_CONFIG: Record<LeadStage, StageConfig> = {
   },
   onboarding: {
     id: 'onboarding',
-    name: 'Onboarding',
-    description: 'Franchise setup and training',
+    name: 'Franchise Onboarding & Launch',
+    shortName: 'Onboarding',
+    description: 'Create the onboarding project, assign launch work, finish training, and approve go-live.',
+    outcome: 'A trained and system-ready franchise location approved for launch.',
+    steps: [
+      'Onboarding project auto-created',
+      'Training tasks assigned',
+      'Store setup checklist completed',
+      'Vendor and system access provisioned',
+      'Go-live approval completed',
+    ],
+    controls: [
+      'Operations-owned checklist',
+      'Training completion required',
+      'IT and ERP access verified',
+    ],
+    primaryOwner: 'Operations',
+    supportingTeams: ['Training', 'IT / ERP Admin'],
     slaHours: 168, // 7 days
     requiredInteractions: 5,
     color: '#8B5CF6',
@@ -165,8 +281,24 @@ export const STAGE_CONFIG: Record<LeadStage, StageConfig> = {
   },
   post_sale: {
     id: 'post_sale',
-    name: 'Post-Sale',
-    description: 'Ongoing support and relationship',
+    name: 'Post-Franchise Sale Management',
+    shortName: 'Post-Sale',
+    description: 'Manage the active franchisee relationship through royalties, compliance, support, and growth.',
+    outcome: 'An active franchisee lifecycle with support, renewal, and expansion visibility.',
+    steps: [
+      'Active franchisee record maintained',
+      'Royalty tracking monitored',
+      'Compliance monitoring completed',
+      'Support tickets managed',
+      'Renewal or expansion opportunities identified',
+    ],
+    controls: [
+      'Agreement renewal tracking',
+      'Multi-unit expansion review',
+      'Performance review cadence',
+    ],
+    primaryOwner: 'Operations',
+    supportingTeams: ['Support', 'Finance'],
     slaHours: undefined,
     requiredInteractions: 0,
     color: '#06B6D4',

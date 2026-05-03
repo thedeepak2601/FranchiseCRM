@@ -8,19 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { settingsData } from '@/mocks/app-data'
-
-const palette = {
-  bg: '#0B0D14',
-  bgCard: '#161A24',
-  border: '#1F2433',
-  text: '#E5E7EB',
-  textDim: '#9CA3AF',
-  textMute: '#6B7280',
-  violet: '#8B7CF6',
-  violetBg: 'rgba(139,124,246,0.08)',
-  emerald: '#10B981',
-  amber: '#F59E0B',
-}
+import { useTheme } from '@/lib/theme-context'
 
 const integrations = [
   { ...settingsData.integrations[0], icon: MessageCircle },
@@ -30,6 +18,7 @@ const integrations = [
 ]
 
 export default function SettingsPage() {
+  const { palette } = useTheme()
   return (
     <div className="p-4 lg:p-6 space-y-6">
       {/* Header */}
@@ -183,7 +172,7 @@ export default function SettingsPage() {
                       <p className="text-sm font-medium" style={{ color: palette.text }}>{pref.label}</p>
                       <p className="text-xs" style={{ color: palette.textMute }}>{pref.description}</p>
                     </div>
-                    <input type="checkbox" defaultChecked className="h-4 w-4 accent-violet-500" />
+                    <input type="checkbox" defaultChecked className="h-4 w-4" style={{ accentColor: palette.violet }} />
                   </div>
                 ))}
               </CardContent>

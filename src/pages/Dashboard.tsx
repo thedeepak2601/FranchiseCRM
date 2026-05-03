@@ -21,30 +21,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
-
-// ============================================================
-// DESIGN TOKENS
-// ============================================================
-
-const palette = {
-  bg: '#0B0D14',
-  bgElev: '#11141C',
-  bgCard: '#161A24',
-  bgCardHover: '#1C2030',
-  border: '#1F2433',
-  borderSoft: '#171B26',
-  text: '#E5E7EB',
-  textDim: '#9CA3AF',
-  textMute: '#6B7280',
-  violet: '#8B7CF6',
-  violetDim: '#6D5FD8',
-  violetBg: 'rgba(139,124,246,0.08)',
-  violetBorder: 'rgba(139,124,246,0.25)',
-  emerald: '#10B981',
-  amber: '#F59E0B',
-  rose: '#F43F5E',
-  cyan: '#06B6D4',
-};
+import { useTheme } from '@/lib/theme-context'
 
 // ============================================================
 // MOCK DATA
@@ -53,7 +30,7 @@ const palette = {
 const brand = {
   name: 'Spice Route Hospitality',
   logo: 'SR',
-  color: palette.violet,
+  color: '#8B7CF6',
 };
 
 const stats = [
@@ -110,6 +87,7 @@ const alerts = [
 // ============================================================
 
 export default function Dashboard() {
+  const { palette } = useTheme()
   const [timeRange, setTimeRange] = useState('monthly')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 

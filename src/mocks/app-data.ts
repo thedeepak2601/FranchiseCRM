@@ -7,8 +7,10 @@ import type {
   LeadDetailResponse,
   LeadListResponse,
   LeadMetrics,
+  LeadSource,
   TimelineEvent,
 } from '@/types/lead'
+import { STAGE_CONFIG } from '@/types/lead'
 
 export const dashboardData = {
   brand: {
@@ -146,6 +148,7 @@ let leads: Lead[] = [
     updated: '2026-04-28T12:00:00.000Z',
     lastActivity: '2026-04-28T12:00:00.000Z',
     brandId: 'BR-001',
+    opportunityId: 'OPP-001',
   },
   {
     id: 'LEAD-002',
@@ -172,6 +175,7 @@ let leads: Lead[] = [
     updated: '2026-04-27T16:45:00.000Z',
     lastActivity: '2026-04-27T16:45:00.000Z',
     brandId: 'BR-001',
+    opportunityId: 'OPP-002',
   },
   {
     id: 'LEAD-003',
@@ -181,15 +185,24 @@ let leads: Lead[] = [
     source: 'ads',
     capturedAt: '2026-04-25T08:00:00.000Z',
     capturedBy: 'Performance Marketing',
+    assignedTo: 'Neha Verma',
+    assignedAt: '2026-04-25T08:12:00.000Z',
+    assignedBy: 'System',
     investment: 20,
     location: 'Bangalore',
+    preferredLocations: ['Indiranagar', 'Whitefield'],
+    budgetRange: '18L-24L',
+    businessExperience: 'Family-run bakery operations',
+    timelineToInvest: '6_months',
+    isDecisionMaker: false,
     stage: 'qualification',
     status: 'in_progress',
     score: 58,
-    owner: 'Sales Team',
+    owner: 'Neha Verma',
     created: '2026-04-25T08:00:00.000Z',
     updated: '2026-04-26T15:00:00.000Z',
     lastActivity: '2026-04-26T15:00:00.000Z',
+    brandId: 'BR-003',
   },
   {
     id: 'LEAD-004',
@@ -199,15 +212,22 @@ let leads: Lead[] = [
     source: 'whatsapp',
     capturedAt: '2026-04-28T10:00:00.000Z',
     capturedBy: 'WhatsApp Bot',
+    assignedTo: 'Lead Desk',
+    assignedAt: '2026-04-28T10:05:00.000Z',
+    assignedBy: 'System',
     investment: 35,
     location: 'Hyderabad',
+    state: 'Telangana',
+    preferredLocations: ['Jubilee Hills', 'Gachibowli'],
+    investmentRange: '30L-40L',
     stage: 'lead_capture',
     status: 'new',
     score: 45,
-    owner: 'Marketing',
+    owner: 'Lead Desk',
     created: '2026-04-28T10:00:00.000Z',
     updated: '2026-04-28T10:00:00.000Z',
     lastActivity: '2026-04-28T10:00:00.000Z',
+    brandId: 'BR-002',
   },
   {
     id: 'LEAD-005',
@@ -217,8 +237,17 @@ let leads: Lead[] = [
     source: 'portal',
     capturedAt: '2026-04-10T09:00:00.000Z',
     capturedBy: 'Portal',
+    assignedTo: 'Ankit Legal',
+    assignedAt: '2026-04-10T09:15:00.000Z',
+    assignedBy: 'System',
     investment: 28,
     location: 'Kolkata',
+    state: 'West Bengal',
+    preferredLocations: ['Salt Lake', 'Park Street'],
+    budgetRange: '25L-30L',
+    businessExperience: 'Owned two QSR counters',
+    timelineToInvest: '1_month',
+    isDecisionMaker: true,
     stage: 'agreement',
     status: 'approved',
     score: 92,
@@ -226,6 +255,369 @@ let leads: Lead[] = [
     created: '2026-04-10T09:00:00.000Z',
     updated: '2026-04-28T09:15:00.000Z',
     lastActivity: '2026-04-28T09:15:00.000Z',
+    brandId: 'BR-001',
+    opportunityId: 'OPP-005',
+  },
+  {
+    id: 'LEAD-006',
+    name: 'Nisha Menon',
+    phone: '+91 98765 43215',
+    email: 'nisha.menon@email.com',
+    source: 'google',
+    capturedAt: '2026-04-29T07:45:00.000Z',
+    capturedBy: 'Google Ads',
+    assignedTo: 'Karan Malhotra',
+    assignedAt: '2026-04-29T07:58:00.000Z',
+    assignedBy: 'System',
+    investment: 18,
+    location: 'Chennai',
+    state: 'Tamil Nadu',
+    preferredLocations: ['T Nagar', 'Anna Nagar'],
+    investmentRange: '15L-20L',
+    stage: 'first_contact',
+    status: 'in_progress',
+    score: 42,
+    owner: 'Karan Malhotra',
+    created: '2026-04-29T07:45:00.000Z',
+    updated: '2026-04-29T08:20:00.000Z',
+    lastActivity: '2026-04-29T08:20:00.000Z',
+    brandId: 'BR-004',
+  },
+  {
+    id: 'LEAD-007',
+    name: 'Farhan Ali',
+    phone: '+91 98765 43216',
+    email: 'farhan.ali@email.com',
+    source: 'referral',
+    capturedAt: '2026-04-05T10:25:00.000Z',
+    capturedBy: 'Existing Franchisee',
+    assignedTo: 'Operations Team',
+    assignedAt: '2026-04-05T10:45:00.000Z',
+    assignedBy: 'System',
+    investment: 42,
+    location: 'Pune',
+    state: 'Maharashtra',
+    preferredLocations: ['Koregaon Park', 'Kalyani Nagar'],
+    budgetRange: '40L-45L',
+    businessExperience: 'Cloud kitchen operator',
+    timelineToInvest: 'immediate',
+    isDecisionMaker: true,
+    stage: 'onboarding',
+    status: 'active',
+    score: 96,
+    owner: 'Operations Team',
+    created: '2026-04-05T10:25:00.000Z',
+    updated: '2026-04-28T18:10:00.000Z',
+    lastActivity: '2026-04-28T18:10:00.000Z',
+    brandId: 'BR-002',
+    opportunityId: 'OPP-007',
+  },
+  {
+    id: 'LEAD-008',
+    name: 'Meera Iyer',
+    phone: '+91 98765 43217',
+    email: 'meera.iyer@email.com',
+    source: 'website',
+    capturedAt: '2026-03-18T09:40:00.000Z',
+    capturedBy: 'Website',
+    assignedTo: 'Ops Success',
+    assignedAt: '2026-03-18T10:00:00.000Z',
+    assignedBy: 'System',
+    investment: 52,
+    location: 'Ahmedabad',
+    state: 'Gujarat',
+    preferredLocations: ['Prahlad Nagar', 'Satellite'],
+    budgetRange: '50L-55L',
+    businessExperience: 'Retail investor and landlord',
+    timelineToInvest: 'immediate',
+    isDecisionMaker: true,
+    stage: 'post_sale',
+    status: 'converted',
+    score: 98,
+    owner: 'Ops Success',
+    created: '2026-03-18T09:40:00.000Z',
+    updated: '2026-04-26T13:15:00.000Z',
+    lastActivity: '2026-04-26T13:15:00.000Z',
+    brandId: 'BR-001',
+    opportunityId: 'OPP-008',
+  },
+  {
+    id: 'LEAD-009',
+    name: 'Arjun Batra',
+    phone: '+91 98765 43218',
+    email: 'arjun.batra@email.com',
+    source: 'facebook',
+    capturedAt: '2026-04-21T13:15:00.000Z',
+    capturedBy: 'Meta Lead Form',
+    assignedTo: 'Neha Verma',
+    assignedAt: '2026-04-21T13:25:00.000Z',
+    assignedBy: 'System',
+    investment: 32,
+    location: 'Gurgaon',
+    state: 'Haryana',
+    preferredLocations: ['Golf Course Road', 'Sohna Road'],
+    budgetRange: '30L-35L',
+    businessExperience: 'Commercial real estate broker',
+    timelineToInvest: '2_months',
+    isDecisionMaker: true,
+    stage: 'pipeline',
+    status: 'qualified',
+    score: 81,
+    owner: 'Neha Verma',
+    created: '2026-04-21T13:15:00.000Z',
+    updated: '2026-04-29T09:25:00.000Z',
+    lastActivity: '2026-04-29T09:25:00.000Z',
+    brandId: 'BR-003',
+    opportunityId: 'OPP-009',
+  },
+  {
+    id: 'LEAD-010',
+    name: 'Isha Kapoor',
+    phone: '+91 98765 43219',
+    email: 'isha.kapoor@email.com',
+    source: 'instagram',
+    capturedAt: '2026-04-29T12:10:00.000Z',
+    capturedBy: 'Instagram DM',
+    assignedTo: 'Lead Desk',
+    assignedAt: '2026-04-29T12:16:00.000Z',
+    assignedBy: 'System',
+    investment: 16,
+    location: 'Jaipur',
+    state: 'Rajasthan',
+    investmentRange: '15L-18L',
+    stage: 'lead_capture',
+    status: 'new',
+    score: 36,
+    owner: 'Lead Desk',
+    created: '2026-04-29T12:10:00.000Z',
+    updated: '2026-04-29T12:10:00.000Z',
+    lastActivity: '2026-04-29T12:10:00.000Z',
+    brandId: 'BR-004',
+  },
+  {
+    id: 'LEAD-011',
+    name: 'Rohan Desai',
+    phone: '+91 98765 43220',
+    email: 'rohan.desai@email.com',
+    source: 'whatsapp',
+    capturedAt: '2026-04-28T16:20:00.000Z',
+    capturedBy: 'WhatsApp Bot',
+    assignedTo: 'Karan Malhotra',
+    assignedAt: '2026-04-28T16:30:00.000Z',
+    assignedBy: 'System',
+    investment: 24,
+    location: 'Surat',
+    state: 'Gujarat',
+    preferredLocations: ['Vesu', 'Adajan'],
+    investmentRange: '20L-25L',
+    stage: 'first_contact',
+    status: 'in_progress',
+    score: 49,
+    owner: 'Karan Malhotra',
+    created: '2026-04-28T16:20:00.000Z',
+    updated: '2026-04-29T09:05:00.000Z',
+    lastActivity: '2026-04-29T09:05:00.000Z',
+    brandId: 'BR-002',
+  },
+  {
+    id: 'LEAD-012',
+    name: 'Kavya Nair',
+    phone: '+91 98765 43221',
+    email: 'kavya.nair@email.com',
+    source: 'portal',
+    capturedAt: '2026-04-22T11:45:00.000Z',
+    capturedBy: 'Franchise Portal',
+    assignedTo: 'Neha Verma',
+    assignedAt: '2026-04-22T12:00:00.000Z',
+    assignedBy: 'System',
+    investment: 38,
+    location: 'Kochi',
+    state: 'Kerala',
+    preferredLocations: ['Edappally', 'Kakkanad'],
+    budgetRange: '35L-40L',
+    businessExperience: 'Cafe manager for 5 years',
+    timelineToInvest: '3_months',
+    isDecisionMaker: true,
+    stage: 'qualification',
+    status: 'qualified',
+    score: 74,
+    owner: 'Neha Verma',
+    created: '2026-04-22T11:45:00.000Z',
+    updated: '2026-04-28T15:35:00.000Z',
+    lastActivity: '2026-04-28T15:35:00.000Z',
+    brandId: 'BR-002',
+  },
+  {
+    id: 'LEAD-013',
+    name: 'Devika Rao',
+    phone: '+91 98765 43222',
+    email: 'devika.rao@email.com',
+    source: 'ads',
+    capturedAt: '2026-04-14T08:55:00.000Z',
+    capturedBy: 'Performance Marketing',
+    assignedTo: 'Management Desk',
+    assignedAt: '2026-04-14T09:20:00.000Z',
+    assignedBy: 'System',
+    investment: 46,
+    location: 'Mysore',
+    state: 'Karnataka',
+    preferredLocations: ['VV Mohalla', 'Jayalakshmipuram'],
+    budgetRange: '45L-50L',
+    businessExperience: 'Runs packaged foods distribution',
+    timelineToInvest: '1_month',
+    isDecisionMaker: true,
+    stage: 'approvals',
+    status: 'pending',
+    score: 88,
+    owner: 'Management Desk',
+    created: '2026-04-14T08:55:00.000Z',
+    updated: '2026-04-29T10:40:00.000Z',
+    lastActivity: '2026-04-29T10:40:00.000Z',
+    brandId: 'BR-001',
+    opportunityId: 'OPP-013',
+  },
+  {
+    id: 'LEAD-014',
+    name: 'Suresh Nanda',
+    phone: '+91 98765 43223',
+    email: 'suresh.nanda@email.com',
+    source: 'referral',
+    capturedAt: '2026-04-06T14:15:00.000Z',
+    capturedBy: 'CA Referral',
+    assignedTo: 'Ankit Legal',
+    assignedAt: '2026-04-06T14:45:00.000Z',
+    assignedBy: 'System',
+    investment: 60,
+    location: 'Bhubaneswar',
+    state: 'Odisha',
+    preferredLocations: ['Patia', 'Saheed Nagar'],
+    budgetRange: '55L-65L',
+    businessExperience: 'Hospitality investor',
+    timelineToInvest: 'immediate',
+    isDecisionMaker: true,
+    stage: 'agreement',
+    status: 'approved',
+    score: 90,
+    owner: 'Ankit Legal',
+    created: '2026-04-06T14:15:00.000Z',
+    updated: '2026-04-29T11:10:00.000Z',
+    lastActivity: '2026-04-29T11:10:00.000Z',
+    brandId: 'BR-001',
+    opportunityId: 'OPP-014',
+  },
+  {
+    id: 'LEAD-015',
+    name: 'Ananya Choudhury',
+    phone: '+91 98765 43224',
+    email: 'ananya.c@email.com',
+    source: 'website',
+    capturedAt: '2026-03-29T10:10:00.000Z',
+    capturedBy: 'Website',
+    assignedTo: 'Operations Team',
+    assignedAt: '2026-03-29T10:20:00.000Z',
+    assignedBy: 'System',
+    investment: 34,
+    location: 'Guwahati',
+    state: 'Assam',
+    preferredLocations: ['GS Road', 'Six Mile'],
+    budgetRange: '30L-35L',
+    businessExperience: 'Boutique owner',
+    timelineToInvest: 'immediate',
+    isDecisionMaker: true,
+    stage: 'onboarding',
+    status: 'active',
+    score: 94,
+    owner: 'Operations Team',
+    created: '2026-03-29T10:10:00.000Z',
+    updated: '2026-04-29T08:30:00.000Z',
+    lastActivity: '2026-04-29T08:30:00.000Z',
+    brandId: 'BR-004',
+    opportunityId: 'OPP-015',
+  },
+  {
+    id: 'LEAD-016',
+    name: 'Harpreet Gill',
+    phone: '+91 98765 43225',
+    email: 'harpreet.gill@email.com',
+    source: 'other',
+    capturedAt: '2026-03-12T15:40:00.000Z',
+    capturedBy: 'Trade Expo',
+    assignedTo: 'Ops Success',
+    assignedAt: '2026-03-12T16:00:00.000Z',
+    assignedBy: 'System',
+    investment: 48,
+    location: 'Chandigarh',
+    state: 'Punjab',
+    preferredLocations: ['Sector 17', 'Mohali'],
+    budgetRange: '45L-50L',
+    businessExperience: 'Multi-brand distributor',
+    timelineToInvest: 'immediate',
+    isDecisionMaker: true,
+    stage: 'post_sale',
+    status: 'converted',
+    score: 97,
+    owner: 'Ops Success',
+    created: '2026-03-12T15:40:00.000Z',
+    updated: '2026-04-28T17:45:00.000Z',
+    lastActivity: '2026-04-28T17:45:00.000Z',
+    brandId: 'BR-003',
+    opportunityId: 'OPP-016',
+  },
+  {
+    id: 'LEAD-017',
+    name: 'Manish Agarwal',
+    phone: '+91 98765 43226',
+    email: 'manish.agarwal@email.com',
+    source: 'google',
+    capturedAt: '2026-04-19T09:05:00.000Z',
+    capturedBy: 'Google Ads',
+    assignedTo: 'Karan Malhotra',
+    assignedAt: '2026-04-19T09:20:00.000Z',
+    assignedBy: 'System',
+    investment: 14,
+    location: 'Lucknow',
+    state: 'Uttar Pradesh',
+    investmentRange: '12L-15L',
+    budgetRange: '12L-15L',
+    businessExperience: 'New investor',
+    timelineToInvest: '9_months',
+    isDecisionMaker: true,
+    stage: 'qualification',
+    status: 'nurture',
+    score: 39,
+    owner: 'Karan Malhotra',
+    created: '2026-04-19T09:05:00.000Z',
+    updated: '2026-04-27T11:20:00.000Z',
+    lastActivity: '2026-04-27T11:20:00.000Z',
+    brandId: 'BR-004',
+  },
+  {
+    id: 'LEAD-018',
+    name: 'Pooja Kulkarni',
+    phone: '+91 98765 43227',
+    email: 'pooja.kulkarni@email.com',
+    source: 'facebook',
+    capturedAt: '2026-04-17T18:30:00.000Z',
+    capturedBy: 'Meta Lead Form',
+    assignedTo: 'Neha Verma',
+    assignedAt: '2026-04-17T18:40:00.000Z',
+    assignedBy: 'System',
+    investment: 10,
+    location: 'Nagpur',
+    state: 'Maharashtra',
+    investmentRange: '8L-10L',
+    budgetRange: '8L-10L',
+    businessExperience: 'First-time entrepreneur',
+    timelineToInvest: '12_months',
+    isDecisionMaker: false,
+    stage: 'qualification',
+    status: 'disqualified',
+    score: 22,
+    owner: 'Neha Verma',
+    created: '2026-04-17T18:30:00.000Z',
+    updated: '2026-04-23T16:05:00.000Z',
+    lastActivity: '2026-04-23T16:05:00.000Z',
+    brandId: 'BR-004',
   },
 ]
 
@@ -417,11 +809,249 @@ let metrics: Record<string, LeadMetrics> = {
   },
 }
 
+const stageSequence: Lead['stage'][] = [
+  'lead_capture',
+  'first_contact',
+  'qualification',
+  'pipeline',
+  'approvals',
+  'agreement',
+  'onboarding',
+  'post_sale',
+]
+
+const stageActivityTemplates: Record<Lead['stage'], {
+  title: string
+  notes: string
+  taskTitle: string
+  taskDescription: string
+}> = {
+  lead_capture: {
+    title: 'Lead captured and duplicate check completed',
+    notes: 'Source, campaign, phone, and email reviewed before assigning the lead owner.',
+    taskTitle: 'Start first outreach',
+    taskDescription: 'Call within SLA and confirm basic franchise interest.',
+  },
+  first_contact: {
+    title: 'First outreach sequence started',
+    notes: 'Initial call and WhatsApp touchpoint logged with prospect response status.',
+    taskTitle: 'Complete connection attempt',
+    taskDescription: 'Confirm budget range and schedule qualification conversation.',
+  },
+  qualification: {
+    title: 'Qualification data reviewed',
+    notes: 'Budget, investment timeline, territory preference, and decision-maker status discussed.',
+    taskTitle: 'Finish qualification gate',
+    taskDescription: 'Validate investment readiness and decide nurture, disqualify, or convert.',
+  },
+  pipeline: {
+    title: 'Franchise opportunity moved through sales pipeline',
+    notes: 'NDA, pitch deck, discovery meeting, and territory evaluation are being tracked.',
+    taskTitle: 'Collect pipeline artifacts',
+    taskDescription: 'Attach signed NDA, meeting notes, and preferred territory proof.',
+  },
+  approvals: {
+    title: 'Application routed for internal approvals',
+    notes: 'Legal, finance, operations, and management checkpoints are in progress.',
+    taskTitle: 'Close approval decision',
+    taskDescription: 'Capture approval, rejection reason, or rework instruction.',
+  },
+  agreement: {
+    title: 'Agreement and payment workflow active',
+    notes: 'Agreement drafting, digital signing, invoice generation, and payment verification are tracked.',
+    taskTitle: 'Verify agreement payment',
+    taskDescription: 'Confirm signed agreement and finance-verified payment before onboarding.',
+  },
+  onboarding: {
+    title: 'Onboarding project launched',
+    notes: 'Training, setup checklist, vendor access, ERP access, and go-live readiness are in progress.',
+    taskTitle: 'Review go-live readiness',
+    taskDescription: 'Confirm training completion, system access, vendor setup, and launch approval.',
+  },
+  post_sale: {
+    title: 'Post-sale account management started',
+    notes: 'Royalty tracking, compliance review, support queue, renewal, and expansion cadence are active.',
+    taskTitle: 'Schedule performance review',
+    taskDescription: 'Review royalty trend, compliance health, support history, and expansion fit.',
+  },
+}
+
+const addHours = (iso: string, hours: number) =>
+  new Date(new Date(iso).getTime() + hours * 60 * 60 * 1000).toISOString()
+
+function createEmptyChannelStats(): LeadMetrics['channelStats'] {
+  return {
+    call: { attempts: 0, connects: 0, rate: 0 },
+    whatsapp: { attempts: 0, connects: 0, rate: 0 },
+    email: { attempts: 0, connects: 0, rate: 0 },
+    sms: { attempts: 0, connects: 0, rate: 0 },
+    meeting: { attempts: 0, connects: 0, rate: 0 },
+    video_call: { attempts: 0, connects: 0, rate: 0 },
+  }
+}
+
+function ensureComprehensiveMockActivity() {
+  let interactionCounter = interactions.length + 1
+  let taskCounter = followUpTasks.length + 1
+  let eventCounter = timeline.length + 1
+
+  leads.forEach((lead) => {
+    const owner = lead.assignedTo || lead.owner
+    const stageIndex = stageSequence.indexOf(lead.stage)
+    const template = stageActivityTemplates[lead.stage]
+    const leadInteractions = interactions.filter((item) => item.leadId === lead.id)
+    const leadTimeline = timeline.filter((item) => item.leadId === lead.id)
+
+    if (!leadTimeline.some((event) => event.type === 'lead_created')) {
+      timeline.push({
+        id: `EVT-${String(eventCounter++).padStart(3, '0')}`,
+        leadId: lead.id,
+        type: 'lead_created',
+        timestamp: lead.created,
+        user: lead.capturedBy,
+        description: `Lead captured from ${lead.source.replace('_', ' ')} for ${lead.location}.`,
+      })
+    }
+
+    if (stageIndex > 0 && !leadTimeline.some((event) => event.type === 'stage_changed')) {
+      const previousStage = stageSequence[Math.max(stageIndex - 1, 0)]
+      timeline.push({
+        id: `EVT-${String(eventCounter++).padStart(3, '0')}`,
+        leadId: lead.id,
+        type: 'stage_changed',
+        timestamp: addHours(lead.created, 24 + stageIndex * 10),
+        user: owner,
+        description: template.title,
+        previousValue: previousStage,
+        newValue: lead.stage,
+      })
+    }
+
+    if (leadInteractions.length < 2) {
+      const requiredInteractions = Math.max(2 - leadInteractions.length, 0)
+      const firstInteractionId = `INT-${String(interactionCounter++).padStart(3, '0')}`
+      const firstInteraction: Interaction = {
+        id: firstInteractionId,
+        leadId: lead.id,
+        salesRep: owner,
+        timestamp: addHours(lead.created, 4),
+        channel: lead.stage === 'post_sale' ? 'meeting' : 'call',
+        attemptType: 'outbound',
+        outcome: lead.status === 'disqualified' ? 'not_interested' : 'connected',
+        notes: template.notes,
+        duration: lead.stage === 'lead_capture' ? 7 : 22,
+      }
+
+      interactions.push(firstInteraction)
+      timeline.push({
+        id: `EVT-${String(eventCounter++).padStart(3, '0')}`,
+        leadId: lead.id,
+        type: 'interaction_logged',
+        timestamp: firstInteraction.timestamp,
+        user: owner,
+        description: firstInteraction.notes,
+        interactionId: firstInteraction.id,
+      })
+
+      if (requiredInteractions > 1) {
+        const secondInteractionId = `INT-${String(interactionCounter++).padStart(3, '0')}`
+        const secondInteraction: Interaction = {
+          id: secondInteractionId,
+          leadId: lead.id,
+          salesRep: owner,
+          timestamp: lead.lastActivity,
+          channel: lead.stage === 'pipeline' || lead.stage === 'approvals' ? 'meeting' : 'whatsapp',
+          attemptType: 'outbound',
+          outcome: lead.status === 'nurture' ? 'scheduled_callback' : 'connected',
+          notes: `${template.title}. Next checkpoint agreed with ${lead.name.split(' ')[0]}.`,
+          duration: lead.stage === 'pipeline' || lead.stage === 'approvals' ? 35 : 12,
+          nextAction: lead.stage === 'pipeline' ? 'schedule_meeting' : 'follow_up_email',
+          nextActionNotes: template.taskDescription,
+        }
+
+        interactions.push(secondInteraction)
+        timeline.push({
+          id: `EVT-${String(eventCounter++).padStart(3, '0')}`,
+          leadId: lead.id,
+          type: 'interaction_logged',
+          timestamp: secondInteraction.timestamp,
+          user: owner,
+          description: secondInteraction.notes,
+          interactionId: secondInteraction.id,
+        })
+      }
+    }
+
+    if (!followUpTasks.some((task) => task.leadId === lead.id) && lead.status !== 'converted') {
+      const task: FollowUpTask = {
+        id: `TASK-${String(taskCounter++).padStart(3, '0')}`,
+        leadId: lead.id,
+        title: template.taskTitle,
+        description: template.taskDescription,
+        type: lead.stage === 'pipeline' || lead.stage === 'first_contact' ? 'schedule_meeting' : 'follow_up_email',
+        scheduledAt: addHours(lead.lastActivity, lead.stage === 'lead_capture' ? 1 : 24),
+        status: lead.status === 'disqualified' ? 'cancelled' : 'pending',
+        priority: lead.score >= 80 ? 'urgent' : lead.score >= 60 ? 'high' : 'medium',
+        owner,
+        createdBy: owner,
+        created: lead.lastActivity,
+        updated: lead.lastActivity,
+      }
+
+      followUpTasks.push(task)
+      timeline.push({
+        id: `EVT-${String(eventCounter++).padStart(3, '0')}`,
+        leadId: lead.id,
+        type: 'follow_up_created',
+        timestamp: task.created,
+        user: owner,
+        description: `Created task: ${task.title}`,
+        taskId: task.id,
+      })
+    }
+
+    const allLeadInteractions = interactions.filter((item) => item.leadId === lead.id)
+    const channelStats = createEmptyChannelStats()
+    allLeadInteractions.forEach((interaction) => {
+      channelStats[interaction.channel].attempts += 1
+      if (interaction.outcome === 'connected') {
+        channelStats[interaction.channel].connects += 1
+      }
+    })
+
+    Object.values(channelStats).forEach((stats) => {
+      stats.rate = stats.attempts ? Math.round((stats.connects / stats.attempts) * 100) : 0
+    })
+
+    const totalAttempts = allLeadInteractions.length
+    const totalConnects = allLeadInteractions.filter((interaction) => interaction.outcome === 'connected').length
+    const bestChannel = Object.entries(channelStats)
+      .filter(([, stats]) => stats.attempts > 0)
+      .sort(([, a], [, b]) => b.connects - a.connects || b.rate - a.rate)[0]?.[0] as keyof LeadMetrics['channelStats'] | undefined
+
+    metrics[lead.id] = {
+      leadId: lead.id,
+      totalAttempts,
+      totalConnects,
+      connectRate: totalAttempts ? Math.round((totalConnects / totalAttempts) * 100) : 0,
+      firstContactAt: allLeadInteractions.sort((a, b) => a.timestamp.localeCompare(b.timestamp))[0]?.timestamp,
+      lastContactAt: lead.lastActivity,
+      avgResponseTimeHours: Math.max(1, Math.round((stageIndex + 1) * 1.5)),
+      channelStats,
+      bestChannel,
+      slaBreached: lead.status === 'nurture' || lead.status === 'disqualified',
+    }
+  })
+}
+
+ensureComprehensiveMockActivity()
+
 const delay = <T,>(value: T, time = 200) =>
   new Promise<T>((resolve) => setTimeout(() => resolve(value), time))
 
 export async function getMockLeads(params?: {
   stage?: Lead['stage']
+  source?: LeadSource
   status?: string
   assignedTo?: string
   search?: string
@@ -433,16 +1063,19 @@ export async function getMockLeads(params?: {
   if (params?.stage) {
     filtered = filtered.filter((lead) => lead.stage === params.stage)
   }
+  if (params?.source) {
+    filtered = filtered.filter((lead) => lead.source === params.source)
+  }
   if (params?.status) {
     filtered = filtered.filter((lead) => lead.status === params.status)
   }
   if (params?.assignedTo) {
-    filtered = filtered.filter((lead) => lead.assignedTo === params.assignedTo)
+    filtered = filtered.filter((lead) => (lead.assignedTo || lead.owner) === params.assignedTo)
   }
   if (params?.search) {
     const term = params.search.toLowerCase()
     filtered = filtered.filter((lead) =>
-      [lead.id, lead.name, lead.email, lead.phone, lead.location].some((value) =>
+      [lead.id, lead.name, lead.email, lead.phone, lead.location, lead.state, lead.source, lead.assignedTo, lead.owner].some((value) =>
         value?.toLowerCase().includes(term)
       )
     )
@@ -485,6 +1118,63 @@ export async function getMockLead(name: string): Promise<LeadDetailResponse> {
       slaBreached: false,
     },
   })
+}
+
+export async function updateMockLead(name: string, data: Partial<Lead>): Promise<Lead> {
+  const lead = leads.find((item) => item.id === name)
+  if (!lead) {
+    throw new Error(`Lead ${name} not found`)
+  }
+
+  const now = new Date().toISOString()
+  const previousStatus = lead.status
+  const previousStage = lead.stage
+
+  Object.assign(lead, {
+    ...data,
+    id: lead.id,
+    updated: data.updated || now,
+  })
+
+  if (data.status && data.status !== previousStatus) {
+    lead.lastActivity = now
+    timeline = [
+      {
+        id: `EVT-${String(timeline.length + 1).padStart(3, '0')}`,
+        leadId: name,
+        type: 'status_changed',
+        timestamp: now,
+        user: lead.assignedTo || lead.owner,
+        description: `Lead status changed to ${data.status.replace('_', ' ')}.`,
+        previousValue: previousStatus,
+        newValue: data.status,
+      },
+      ...timeline,
+    ]
+  }
+
+  if (data.stage && data.stage !== previousStage) {
+    timeline = [
+      {
+        id: `EVT-${String(timeline.length + 1).padStart(3, '0')}`,
+        leadId: name,
+        type: 'stage_changed',
+        timestamp: now,
+        user: lead.assignedTo || lead.owner,
+        description: `Lead stage moved to ${STAGE_CONFIG[data.stage].name}.`,
+        previousValue: STAGE_CONFIG[previousStage].name,
+        newValue: STAGE_CONFIG[data.stage].name,
+      },
+      ...timeline,
+    ]
+  }
+
+  if (metrics[name]) {
+    metrics[name].slaBreached = lead.status === 'nurture' || lead.status === 'disqualified'
+    metrics[name].lastContactAt = lead.lastActivity
+  }
+
+  return delay(lead)
 }
 
 export async function createMockInteraction(data: CreateInteractionRequest): Promise<Interaction> {

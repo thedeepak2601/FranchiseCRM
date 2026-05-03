@@ -3,4 +3,6 @@ dist/
 .env
 .env.local
 credentials.json
+master-shore-492607-i0-*.json
+franchise-crm-*.json
 uploads/

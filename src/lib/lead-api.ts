@@ -23,6 +23,7 @@ import type {
   FollowUpTask,
   TimelineEvent,
   LeadMetrics,
+  LeadSource,
   LeadStage,
   UpdateLeadStageRequest,
 } from '../types/lead'
@@ -30,6 +31,7 @@ import type {
 const leadApiReal = {
   getLeads: async (params?: {
     stage?: LeadStage
+    source?: LeadSource
     status?: string
     assignedTo?: string
     search?: string

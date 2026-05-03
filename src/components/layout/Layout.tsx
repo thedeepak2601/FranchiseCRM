@@ -6,35 +6,13 @@ import {
   IndianRupee, TrendingUp, Package, MapPin, Target
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useTheme } from '@/lib/theme-context'
+import { ThemeSwitcher } from '@/components/ThemeSwitcher'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { appModeLabel, isMockMode } from '@/lib/app-mode'
-
-// ============================================================
-// DESIGN TOKENS (matching Franchise.jsx)
-// ============================================================
-
-const palette = {
-  bg: '#0B0D14',
-  bgElev: '#11141C',
-  bgCard: '#161A24',
-  bgCardHover: '#1C2030',
-  border: '#1F2433',
-  borderSoft: '#171B26',
-  text: '#E5E7EB',
-  textDim: '#9CA3AF',
-  textMute: '#6B7280',
-  violet: '#8B7CF6',
-  violetDim: '#6D5FD8',
-  violetBg: 'rgba(139,124,246,0.08)',
-  violetBorder: 'rgba(139,124,246,0.25)',
-  emerald: '#10B981',
-  amber: '#F59E0B',
-  rose: '#F43F5E',
-  cyan: '#06B6D4',
-}
 
 // ============================================================
 // NAVIGATION CONFIG
@@ -65,6 +43,7 @@ export default function Layout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const location = useLocation()
   const navigate = useNavigate()
+  const { palette } = useTheme()
 
   return (
     <div className="min-h-screen flex" style={{ background: palette.bg }}>
@@ -170,6 +149,9 @@ export default function Layout() {
               ))}
             </div>
 
+            {/* Theme Switcher */}
+            <ThemeSwitcher />
+
             {/* Notifications */}
             <Button variant="ghost" size="icon" className="relative">
               <Bell className="h-5 w-5" style={{ color: palette.textDim }} />
@@ -219,6 +201,8 @@ function SidebarContent({
   onNavigate: (path: string) => void
   onClose?: () => void
 }) {
+  const { palette } = useTheme()
+
   return (
     <div className="flex flex-col h-full">
       {/* Logo */}
@@ -263,7 +247,7 @@ function SidebarContent({
               onClick={() => onNavigate(item.path)}
               className={cn(
                 "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all",
-                isActive && "bg-[rgba(139,124,246,0.15)]"
+                isActive && "opacity-100"
               )}
               style={{
                 background: isActive ? palette.violetBg : 'transparent',

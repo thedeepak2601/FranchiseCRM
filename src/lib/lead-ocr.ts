@@ -782,19 +782,44 @@ async function runGoogleVisionBackendRequest(file: File, allowEmpty = false): Pr
 }
 
 export async function getOcrBackendHealth(): Promise<OcrBackendHealth> {
+  if (import.meta.env.VITE_GOOGLE_VISION_API_KEY) {
+    return {
+      ok: true,
+      visionReady: true,
+      service: 'google-vision-direct',
+      message: 'Google Vision API key is configured.',
+    }
+  }
+
   const endpoint = import.meta.env.VITE_OCR_API_URL || '/ocr'
-  const healthUrl = endpoint.endsWith('/ocr') ? endpoint.replace(/\/ocr$/, '/health') : '/health'
+  const healthUrl = endpoint.replace(/\/ocr(?:\/)?$/, '/health')
 
   try {
     const response = await fetchWithTimeout(healthUrl, undefined, 5000)
+    const contentType = response.headers.get('content-type') || ''
+    const payload = contentType.includes('application/json')
+      ? await response.json().catch(() => null)
+      : null
+    const textPayload = payload ? '' : await response.text().catch(() => '')
+
     if (!response.ok) {
       return {
         ok: false,
-        message: `Health check failed with status ${response.status}.`,
+        message:
+          payload?.error ||
+          textPayload ||
+          `Health check failed with status ${response.status}.`,
       }
     }
 
-    return response.json()
+    if (payload && typeof payload === 'object') {
+      return payload
+    }
+
+    return {
+      ok: false,
+      message: 'Health check returned an unexpected response.',
+    }
   } catch (error) {
     return {
       ok: false,
