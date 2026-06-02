@@ -3,6 +3,8 @@
  * Single-stream event view with exact timestamps
  */
 
+import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Phone,
   Mail,
@@ -19,14 +21,18 @@ import {
   FileText,
   Check,
   UserCheck,
+  CalendarPlus,
+  X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { InteractionLogger } from './InteractionLogger'
-import { cn } from '@/lib/utils'
+import { cn, formatLabel } from '@/lib/utils'
 import { useTheme } from '@/lib/theme-context'
 import { getLeadOwner, getLeadSubStage, getOwnerActionTasks } from '@/lib/lead-stage'
 import { STAGE_CONFIG } from '@/types/lead'
@@ -38,6 +44,9 @@ import type {
   LeadMetrics,
   CreateInteractionRequest,
   TimelineEventType,
+  LeadStatus,
+  NextActionType,
+  FollowUpPriority,
 } from '@/types/lead'
 
 type PaletteType = ReturnType<typeof useTheme>['palette']
@@ -139,6 +148,17 @@ interface LeadDetailPanelProps {
   timeline?: TimelineEvent[]
   metrics?: LeadMetrics
   onUpdateStage?: (stage: string) => void
+  onUpdateStatus?: (status: LeadStatus, comments?: string) => Promise<void> | void
+  onCreateFollowUp?: (data: {
+    leadId: string
+    title: string
+    description: string
+    type: NextActionType
+    scheduledAt: string
+    priority: FollowUpPriority
+    owner: string
+  }) => void
+  onEditLead?: () => void
   onLogInteraction?: (data: CreateInteractionRequest) => void
   onCompleteTask?: (taskId: string) => void
   className?: string
@@ -152,9 +172,30 @@ export function LeadDetailPanel({
   metrics,
   onLogInteraction,
   onCompleteTask,
+  onUpdateStage,
+  onUpdateStatus,
+  onCreateFollowUp,
+  onEditLead,
   className,
 }: LeadDetailPanelProps) {
   const { palette } = useTheme()
+  const [showStatusConfirm, setShowStatusConfirm] = useState(false)
+  const [showFollowUpModal, setShowFollowUpModal] = useState(false)
+  const [showStageStepsModal, setShowStageStepsModal] = useState(false)
+  const [selectedStatus, setSelectedStatus] = useState<LeadStatus>(lead.status)
+  const [statusComments, setStatusComments] = useState('')
+  const [statusError, setStatusError] = useState('')
+  const [stageStepWarning, setStageStepWarning] = useState('')
+  const [stageStepChecks, setStageStepChecks] = useState<boolean[]>([])
+  const [followUpStatus, setFollowUpStatus] = useState<LeadStatus>(lead.status)
+  const [followUpIndicator, setFollowUpIndicator] = useState('warm')
+  const [followUpDate, setFollowUpDate] = useState('')
+  const [followUpPriority, setFollowUpPriority] = useState<FollowUpPriority>('medium')
+  const [followUpOwner, setFollowUpOwner] = useState(lead.assignedTo || lead.owner)
+  const [callingAction, setCallingAction] = useState<NextActionType>('call_again')
+  const [nextFollowUpAction, setNextFollowUpAction] = useState<NextActionType>('call_again')
+  const [followUpComments, setFollowUpComments] = useState('')
+  const [followUpError, setFollowUpError] = useState('')
   const sourceConfig = buildSourceConfig(palette)
   const statusConfig = buildStatusConfig(palette)
   const timelineEventStyle = buildTimelineEventStyle(palette)
@@ -162,11 +203,26 @@ export function LeadDetailPanel({
   const stageEntries = Object.values(STAGE_CONFIG)
   const stageIndex = Math.max(stageEntries.findIndex((stage) => stage.id === lead.stage), 0)
   const stageProgress = ((stageIndex + 1) / stageEntries.length) * 100
+  const previousStage = stageEntries[stageIndex - 1]
+  const nextStage = stageEntries[stageIndex + 1]
+  const statusSequence: LeadStatus[] = ['new', 'in_progress', 'qualified', 'nurture', 'pending', 'approved', 'active', 'cold', 'converted', 'disqualified']
+  const currentStatusIndex = statusSequence.indexOf(lead.status)
+  const nextStatus = currentStatusIndex >= 0 ? statusSequence[currentStatusIndex + 1] : undefined
   const leadOwner = getLeadOwner(lead)
   const activeSubStage = getLeadSubStage(lead, { interactions, followUpTasks, timeline })
   const ownerActionTasks = getOwnerActionTasks(lead, followUpTasks)
   const statusStyle = statusConfig[lead.status] ?? statusConfig.new
   const sourceStyle = sourceConfig[lead.source] ?? sourceConfig.other
+  const stageStepStorageKey = `franchise-crm-stage-steps:${lead.id}:${lead.stage}`
+  const completedStageSteps = stageStepChecks.filter(Boolean).length
+  const allStageStepsComplete = stageConfig.steps.length > 0 && completedStageSteps === stageConfig.steps.length
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem(stageStepStorageKey)
+    const parsed = saved ? JSON.parse(saved) as boolean[] : []
+    setStageStepChecks(stageConfig.steps.map((_, index) => Boolean(parsed[index])))
+    setStageStepWarning('')
+  }, [stageConfig.steps, stageStepStorageKey])
 
   const formatDateTime = (dateStr?: string) =>
     dateStr
@@ -187,6 +243,128 @@ export function LeadDetailPanel({
           year: 'numeric',
         })
       : 'Not available'
+
+  const resetFollowUpForm = () => {
+    setFollowUpStatus(lead.status)
+    setFollowUpIndicator('warm')
+    setFollowUpDate('')
+    setFollowUpPriority('medium')
+    setFollowUpOwner(lead.assignedTo || lead.owner)
+    setCallingAction('call_again')
+    setNextFollowUpAction('call_again')
+    setFollowUpComments('')
+    setFollowUpError('')
+  }
+
+  const openFollowUpModal = () => {
+    resetFollowUpForm()
+    setShowFollowUpModal(true)
+  }
+
+  const closeFollowUpModal = () => {
+    setShowFollowUpModal(false)
+    setFollowUpError('')
+  }
+
+  const openStatusModal = (status: LeadStatus = nextStatus || lead.status) => {
+    setSelectedStatus(status)
+    setStatusComments('')
+    setStatusError('')
+    setShowStatusConfirm(true)
+  }
+
+  const closeStatusModal = () => {
+    setShowStatusConfirm(false)
+    setStatusError('')
+  }
+
+  const submitStatusChange = async () => {
+    if (!onUpdateStatus) return
+    if (selectedStatus === lead.status && !statusComments.trim()) {
+      setStatusError('Select a new status or add a comment before saving.')
+      return
+    }
+
+    await onUpdateStatus(selectedStatus, statusComments.trim() || undefined)
+    closeStatusModal()
+  }
+
+  const toggleStageStep = (index: number) => {
+    setStageStepChecks((current) => {
+      const next = stageConfig.steps.map((_, stepIndex) => stepIndex === index ? !current[stepIndex] : Boolean(current[stepIndex]))
+      window.localStorage.setItem(stageStepStorageKey, JSON.stringify(next))
+      if (next.every(Boolean)) {
+        setStageStepWarning('')
+      }
+      return next
+    })
+  }
+
+  const openStageStepsModal = () => {
+    setStageStepWarning('')
+    setShowStageStepsModal(true)
+  }
+
+  const closeStageStepsModal = () => {
+    setShowStageStepsModal(false)
+    setStageStepWarning('')
+  }
+
+  const handleNextStageRequest = () => {
+    if (!nextStage || !onUpdateStage) return
+
+    if (!allStageStepsComplete) {
+      setStageStepWarning('First fulfill all requirements in this stage, then move to the next stage.')
+      setShowStageStepsModal(true)
+      return
+    }
+
+    setShowStageStepsModal(false)
+    setStageStepWarning('')
+    onUpdateStage(nextStage.id)
+  }
+
+  const completeAllStageSteps = () => {
+    const next = stageConfig.steps.map(() => true)
+    window.localStorage.setItem(stageStepStorageKey, JSON.stringify(next))
+    setStageStepChecks(next)
+    setStageStepWarning('')
+  }
+
+  const handleCreateFollowUp = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setFollowUpError('')
+
+    if (!followUpDate) {
+      setFollowUpError('Select the next follow-up date.')
+      return
+    }
+
+    if (!followUpOwner.trim()) {
+      setFollowUpError('Assign the follow-up to an owner.')
+      return
+    }
+
+    if (!followUpComments.trim()) {
+      setFollowUpError('Add follow-up comments.')
+      return
+    }
+
+    if (followUpStatus !== lead.status) {
+      onUpdateStatus?.(followUpStatus)
+    }
+
+    onCreateFollowUp?.({
+      leadId: lead.id,
+      title: nextFollowUpAction.replace(/_/g, ' '),
+      description: followUpComments.trim(),
+      type: nextFollowUpAction,
+      scheduledAt: new Date(`${followUpDate}T09:00`).toISOString(),
+      priority: followUpPriority,
+      owner: followUpOwner.trim(),
+    })
+    closeFollowUpModal()
+  }
 
   const slaStatus = metrics?.slaBreached
     ? { color: palette.rose, bg: 'rgba(244,63,94,0.15)', label: 'SLA Breached' }
@@ -246,9 +424,400 @@ export function LeadDetailPanel({
     })),
   ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
 
+  const overlays = (
+    <>
+      {showStageStepsModal ? (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4"
+          onMouseDown={closeStageStepsModal}
+        >
+          <div
+            className="w-full max-w-2xl rounded-xl border shadow-2xl"
+            style={{ background: palette.bgElev, borderColor: palette.border }}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4 border-b p-5" style={{ borderColor: palette.border }}>
+              <div>
+                <div className="text-xs font-semibold uppercase" style={{ color: stageConfig.color }}>
+                  Stage {stageIndex + 1}
+                </div>
+                <h3 className="mt-1 text-xl font-semibold" style={{ color: palette.text }}>
+                  {stageConfig.name}
+                </h3>
+                <p className="mt-1 text-sm" style={{ color: palette.textMute }}>
+                  Tick every requirement before moving to {nextStage?.name || 'the next stage'}.
+                </p>
+              </div>
+              <Button type="button" variant="ghost" size="icon" onClick={closeStageStepsModal}>
+                <X className="h-5 w-5" style={{ color: palette.textMute }} />
+              </Button>
+            </div>
+
+            <div className="space-y-4 p-5">
+              {stageStepWarning ? (
+                <div className="rounded-lg border p-3 text-sm" style={{ borderColor: palette.amber, background: palette.amber + '12', color: palette.amber }}>
+                  {stageStepWarning}
+                </div>
+              ) : null}
+
+              <div className="rounded-lg border p-3" style={{ borderColor: palette.border, background: palette.bgCard }}>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="text-sm font-semibold" style={{ color: palette.text }}>
+                    Stage steps
+                  </div>
+                  <Badge style={{ background: allStageStepsComplete ? palette.emerald + '20' : palette.amber + '20', color: allStageStepsComplete ? palette.emerald : palette.amber }}>
+                    {completedStageSteps}/{stageConfig.steps.length} complete
+                  </Badge>
+                </div>
+
+                <div className="space-y-2">
+                  {stageConfig.steps.map((step, index) => {
+                    const isComplete = Boolean(stageStepChecks[index])
+
+                    return (
+                      <button
+                        key={step}
+                        type="button"
+                        onClick={() => toggleStageStep(index)}
+                        className="flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-white/5"
+                        style={{
+                          borderColor: isComplete ? stageConfig.color : palette.border,
+                          background: isComplete ? stageConfig.color + '10' : 'transparent',
+                        }}
+                      >
+                        <span
+                          className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
+                          style={{
+                            background: isComplete ? stageConfig.color : stageConfig.color + '18',
+                            color: isComplete ? 'white' : stageConfig.color,
+                          }}
+                        >
+                          {isComplete ? <Check className="h-4 w-4" /> : index + 1}
+                        </span>
+                        <span className="text-sm leading-relaxed" style={{ color: palette.text }}>
+                          {step}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={completeAllStageSteps}
+                  style={{ borderColor: palette.border, color: palette.text }}
+                >
+                  Mark All Complete
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={closeStageStepsModal}
+                  style={{ borderColor: palette.border, color: palette.text }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleNextStageRequest}
+                  disabled={!nextStage}
+                  style={{ background: allStageStepsComplete ? stageConfig.color : palette.textMute }}
+                >
+                  <ArrowRight className="mr-2 h-4 w-4" />
+                  {nextStage ? `Move to ${nextStage.shortName}` : 'Final Stage'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showStatusConfirm ? (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4"
+          onMouseDown={closeStatusModal}
+        >
+          <div
+            className="w-full max-w-2xl overflow-hidden rounded-xl border shadow-2xl"
+            style={{ background: palette.bgElev, borderColor: palette.border }}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="border-b p-5" style={{ borderColor: palette.border, background: palette.bgCard }}>
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full" style={{ background: statusStyle.bg, color: statusStyle.color }}>
+                    <CheckCircle2 className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <div className="text-xs font-semibold uppercase" style={{ color: palette.textMute }}>Change Lead Status</div>
+                    <h3 className="mt-1 text-xl font-semibold" style={{ color: palette.text }}>{lead.name}</h3>
+                    <p className="mt-1 text-sm" style={{ color: palette.textMute }}>
+                      {lead.id} · Current status: {formatLabel(lead.status)}
+                    </p>
+                  </div>
+                </div>
+                <Button type="button" variant="ghost" size="icon" onClick={closeStatusModal}>
+                  <X className="h-5 w-5" style={{ color: palette.textMute }} />
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-5 p-5">
+              <div>
+                <div className="mb-3 text-sm font-medium" style={{ color: palette.text }}>Select new status</div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {statusSequence.map((status) => {
+                    const style = statusConfig[status] ?? statusConfig.new
+                    const isSelected = selectedStatus === status
+                    const isCurrent = lead.status === status
+
+                    return (
+                      <button
+                        key={status}
+                        type="button"
+                        onClick={() => {
+                          setSelectedStatus(status)
+                          setStatusError('')
+                        }}
+                        className="flex items-center justify-between gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-white/5"
+                        style={{
+                          borderColor: isSelected ? style.color : palette.border,
+                          background: isSelected ? style.bg : palette.bgCard,
+                        }}
+                      >
+                        <span className="flex items-center gap-3">
+                          <span
+                            className="flex h-6 w-6 items-center justify-center rounded-full border"
+                            style={{
+                              borderColor: style.color,
+                              background: isSelected ? style.color : 'transparent',
+                              color: isSelected ? 'white' : style.color,
+                            }}
+                          >
+                            {isSelected ? <Check className="h-3.5 w-3.5" /> : null}
+                          </span>
+                          <span className="font-medium" style={{ color: palette.text }}>{formatLabel(status)}</span>
+                        </span>
+                        {isCurrent ? (
+                          <Badge variant="secondary">Current</Badge>
+                        ) : null}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <label className="block space-y-2">
+                <span className="text-sm font-medium" style={{ color: palette.text }}>Comments</span>
+                <Textarea
+                  value={statusComments}
+                  onChange={(event) => setStatusComments(event.target.value)}
+                  placeholder="Add context for this status change..."
+                  rows={4}
+                  style={{ background: palette.bgCard, borderColor: palette.border, color: palette.text }}
+                />
+              </label>
+
+              {statusError ? (
+                <div className="rounded-lg border p-3 text-sm" style={{ borderColor: palette.rose, color: palette.rose }}>
+                  {statusError}
+                </div>
+              ) : null}
+
+              <div className="rounded-lg border p-3 text-sm" style={{ borderColor: palette.border, background: palette.bgCard, color: palette.textMute }}>
+                Status will change from <span style={{ color: palette.text }}>{formatLabel(lead.status)}</span> to{' '}
+                <span style={{ color: palette.text }}>{formatLabel(selectedStatus)}</span>.
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={closeStatusModal}
+                  style={{ borderColor: palette.border, color: palette.text }}
+                >
+                  Cancel
+                </Button>
+                <Button type="button" onClick={submitStatusChange} style={{ background: palette.violet }}>
+                  Save Status Change
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showFollowUpModal ? (
+        <div
+          className="fixed inset-0 z-[9999] overflow-y-auto bg-black/70 p-4"
+          onMouseDown={closeFollowUpModal}
+        >
+          <div
+            className="mx-auto my-6 w-full max-w-5xl rounded-xl border shadow-2xl"
+            style={{ background: palette.bgElev, borderColor: palette.border }}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b p-5" style={{ borderColor: palette.border }}>
+              <div className="flex items-center gap-3">
+                <CalendarPlus className="h-7 w-7" style={{ color: palette.cyan }} />
+                <h3 className="text-2xl font-semibold" style={{ color: palette.text }}>Schedule Follow-up</h3>
+              </div>
+              <Button type="button" variant="ghost" size="icon" onClick={closeFollowUpModal}>
+                <X className="h-5 w-5" style={{ color: palette.textMute }} />
+              </Button>
+            </div>
+
+            <form onSubmit={handleCreateFollowUp} className="space-y-6 p-5">
+              <div className="rounded-lg border px-4 py-3 text-base font-semibold" style={{ borderColor: palette.cyan, background: palette.cyan + '10', color: palette.violet }}>
+                Schedule next follow-up for {lead.name}
+              </div>
+
+              <div>
+                <label className="text-sm font-medium" style={{ color: palette.text }}>Lead Status <span style={{ color: palette.rose }}>*</span></label>
+                <div className="mt-3 flex flex-wrap gap-2 rounded-lg border p-3" style={{ borderColor: palette.border }}>
+                  {(['new', 'in_progress', 'qualified', 'nurture', 'pending', 'approved', 'active', 'cold', 'disqualified', 'converted'] as LeadStatus[]).map((status) => {
+                    const style = statusConfig[status] ?? statusConfig.new
+                    return (
+                      <button
+                        key={status}
+                        type="button"
+                        onClick={() => setFollowUpStatus(status)}
+                        className="flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm capitalize"
+                        style={{
+                          background: followUpStatus === status ? style.bg : 'transparent',
+                          borderColor: followUpStatus === status ? style.color : palette.border,
+                          color: style.color,
+                        }}
+                      >
+                        <span className="h-3 w-3 rounded-full border" style={{ borderColor: style.color, background: followUpStatus === status ? style.color : 'transparent' }} />
+                        {formatLabel(status)}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <label className="space-y-2">
+                  <span className="text-sm font-medium" style={{ color: palette.text }}>Lead Indicator <span style={{ color: palette.rose }}>*</span></span>
+                  <select
+                    value={followUpIndicator}
+                    onChange={(event) => setFollowUpIndicator(event.target.value)}
+                    className="h-11 w-full rounded-lg border px-3 text-sm outline-none"
+                    style={{ background: palette.bgCard, borderColor: palette.border, color: palette.text }}
+                  >
+                    <option value="cold">Cold</option>
+                    <option value="warm">Warm</option>
+                    <option value="hot">Hot</option>
+                  </select>
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium" style={{ color: palette.text }}>Next Follow-up Date <span style={{ color: palette.rose }}>*</span></span>
+                  <Input
+                    type="date"
+                    value={followUpDate}
+                    onChange={(event) => setFollowUpDate(event.target.value)}
+                    style={{ background: palette.bgCard, borderColor: palette.border, color: palette.text }}
+                  />
+                  <span className="block text-xs" style={{ color: palette.textMute }}>Created at 09:00 for the selected date.</span>
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium" style={{ color: palette.text }}>Lead Priority <span style={{ color: palette.rose }}>*</span></span>
+                  <select
+                    value={followUpPriority}
+                    onChange={(event) => setFollowUpPriority(event.target.value as FollowUpPriority)}
+                    className="h-11 w-full rounded-lg border px-3 text-sm outline-none"
+                    style={{ background: palette.bgCard, borderColor: palette.border, color: palette.text }}
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium" style={{ color: palette.text }}>Assign To <span style={{ color: palette.rose }}>*</span></span>
+                  <Input
+                    value={followUpOwner}
+                    onChange={(event) => setFollowUpOwner(event.target.value)}
+                    style={{ background: palette.bgCard, borderColor: palette.border, color: palette.text }}
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium" style={{ color: palette.text }}>Calling Action</span>
+                  <select
+                    value={callingAction}
+                    onChange={(event) => setCallingAction(event.target.value as NextActionType)}
+                    className="h-11 w-full rounded-lg border px-3 text-sm outline-none"
+                    style={{ background: palette.bgCard, borderColor: palette.border, color: palette.text }}
+                  >
+                    <option value="call_again">Call Again</option>
+                    <option value="send_brochure">Send Brochure</option>
+                    <option value="schedule_meeting">Schedule Meeting</option>
+                    <option value="wait_response">Wait Response</option>
+                    <option value="send_proposal">Send Proposal</option>
+                    <option value="follow_up_email">Follow-up Email</option>
+                    <option value="other">Other</option>
+                  </select>
+                </label>
+                <label className="space-y-2">
+                  <span className="text-sm font-medium" style={{ color: palette.text }}>Next Follow Up Action</span>
+                  <select
+                    value={nextFollowUpAction}
+                    onChange={(event) => setNextFollowUpAction(event.target.value as NextActionType)}
+                    className="h-11 w-full rounded-lg border px-3 text-sm outline-none"
+                    style={{ background: palette.bgCard, borderColor: palette.border, color: palette.text }}
+                  >
+                    <option value="call_again">Call Again</option>
+                    <option value="send_brochure">Send Brochure</option>
+                    <option value="schedule_meeting">Schedule Meeting</option>
+                    <option value="wait_response">Wait Response</option>
+                    <option value="send_proposal">Send Proposal</option>
+                    <option value="follow_up_email">Follow-up Email</option>
+                    <option value="other">Other</option>
+                  </select>
+                </label>
+              </div>
+
+              <label className="block space-y-2">
+                <span className="text-sm font-medium" style={{ color: palette.text }}>Comments<span style={{ color: palette.rose }}>*</span></span>
+                <Textarea
+                  value={followUpComments}
+                  onChange={(event) => setFollowUpComments(event.target.value)}
+                  placeholder="Add any additional comments..."
+                  rows={5}
+                  style={{ background: palette.bgCard, borderColor: palette.border, color: palette.text }}
+                />
+              </label>
+
+              {followUpError ? (
+                <div className="rounded-lg border p-3 text-sm" style={{ borderColor: palette.rose, color: palette.rose }}>
+                  {followUpError}
+                </div>
+              ) : null}
+
+              <div className="flex justify-end gap-3">
+                <Button type="button" variant="outline" onClick={closeFollowUpModal} style={{ borderColor: palette.border, color: palette.text }}>
+                  Cancel
+                </Button>
+                <Button type="submit" style={{ background: palette.violet }}>
+                  <CalendarPlus className="mr-2 h-4 w-4" />
+                  Create Follow-up
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+    </>
+  )
+
   return (
     <div className={cn("h-full flex flex-col", className)}>
-      <div className="p-4 border-b" style={{ borderColor: palette.border }}>
+      <div className="shrink-0 p-4 border-b" style={{ borderColor: palette.border }}>
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
             <Avatar className="h-12 w-12">
@@ -261,7 +830,13 @@ export function LeadDetailPanel({
               <p className="text-sm" style={{ color: palette.textMute }}>{lead.id}</p>
             </div>
           </div>
-          <Button variant="ghost" size="sm" style={{ color: palette.textMute }}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onEditLead}
+            style={{ color: palette.textMute }}
+            aria-label={`Edit ${lead.name}`}
+          >
             <Edit className="h-4 w-4" />
           </Button>
         </div>
@@ -271,7 +846,7 @@ export function LeadDetailPanel({
             {lead.source}
           </Badge>
           <Badge style={{ background: statusStyle.bg, color: statusStyle.color }}>
-            {lead.status.replace('_', ' ')}
+            {formatLabel(lead.status)}
           </Badge>
           <Badge style={{ background: stageConfig.color + '20', color: stageConfig.color }}>
             {stageConfig.name}
@@ -286,9 +861,50 @@ export function LeadDetailPanel({
             </Badge>
           )}
         </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          {nextStage && onUpdateStage ? (
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleNextStageRequest}
+              style={{ background: stageConfig.color }}
+              className="min-w-[150px] flex-1"
+            >
+              <ArrowRight className="mr-2 h-4 w-4" />
+              Next Stage
+            </Button>
+          ) : null}
+          {nextStatus && onUpdateStatus ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => openStatusModal(nextStatus)}
+              style={{ borderColor: palette.border, color: palette.text }}
+              className="min-w-[150px] flex-1"
+            >
+              <CheckCircle2 className="mr-2 h-4 w-4" style={{ color: palette.emerald }} />
+              Next Status
+            </Button>
+          ) : null}
+          {onCreateFollowUp ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={openFollowUpModal}
+              style={{ borderColor: palette.border, color: palette.text }}
+              className="min-w-[185px] flex-1"
+            >
+              <CalendarPlus className="mr-2 h-4 w-4" style={{ color: palette.cyan }} />
+              Schedule Follow-up
+            </Button>
+          ) : null}
+        </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 pb-12 space-y-4">
         <Card style={{ background: palette.bgCard, borderColor: palette.border }}>
           <CardHeader className="pb-3">
             <div className="flex items-start justify-between gap-3">
@@ -325,6 +941,45 @@ export function LeadDetailPanel({
               <p className="mt-2 text-xs leading-relaxed" style={{ color: palette.textMute }}>
                 Outcome: {stageConfig.outcome}
               </p>
+              {onUpdateStage ? (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {previousStage ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onUpdateStage(previousStage.id)}
+                      style={{ borderColor: palette.border, color: palette.text }}
+                      className="min-w-[150px] flex-1"
+                    >
+                      Back to {previousStage.shortName}
+                    </Button>
+                  ) : null}
+                  {nextStage ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleNextStageRequest}
+                      style={{ background: stageConfig.color }}
+                      className="min-w-[170px] flex-1"
+                    >
+                      Move to {nextStage.shortName}
+                    </Button>
+                  ) : null}
+                  {nextStatus && onUpdateStatus ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openStatusModal(nextStatus)}
+                      style={{ borderColor: palette.border, color: palette.text }}
+                      className="min-w-[190px] flex-1"
+                    >
+                      Next Status: {formatLabel(nextStatus)}
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
               {ownerActionTasks.length > 0 ? (
                 <div className="mt-3 rounded-lg border p-3" style={{ borderColor: palette.amber, background: 'rgba(245,158,11,0.08)' }}>
                   <div className="flex items-center gap-2 text-xs font-semibold uppercase" style={{ color: palette.amber }}>
@@ -339,28 +994,43 @@ export function LeadDetailPanel({
             </div>
 
             <div className="rounded-lg border p-3" style={{ borderColor: palette.border }}>
-              <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase" style={{ color: palette.textMute }}>
-                <CheckCircle2 className="h-3.5 w-3.5" style={{ color: stageConfig.color }} />
-                Steps in this stage
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase" style={{ color: palette.textMute }}>
+                  <CheckCircle2 className="h-3.5 w-3.5" style={{ color: stageConfig.color }} />
+                  Stage steps
+                </div>
+                <button
+                  type="button"
+                  className="text-xs font-medium hover:underline"
+                  style={{ color: stageConfig.color }}
+                  onClick={openStageStepsModal}
+                >
+                  {completedStageSteps}/{stageConfig.steps.length} complete
+                </button>
               </div>
               <div className="space-y-2">
                 {stageConfig.steps.map((step, index) => {
-                  const isActiveSubStage = index === activeSubStage.index
+                  const isComplete = Boolean(stageStepChecks[index])
                   return (
-                  <div key={step} className="flex gap-2">
+                  <button
+                    key={step}
+                    type="button"
+                    className="flex w-full gap-2 rounded-md p-1 text-left transition-colors hover:bg-white/5"
+                    onClick={() => toggleStageStep(index)}
+                  >
                     <span
                       className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
                       style={{
-                        background: isActiveSubStage ? stageConfig.color : stageConfig.color + '18',
-                        color: isActiveSubStage ? 'white' : stageConfig.color,
+                        background: isComplete ? stageConfig.color : stageConfig.color + '18',
+                        color: isComplete ? 'white' : stageConfig.color,
                       }}
                     >
-                      {index + 1}
+                      {isComplete ? <Check className="h-3 w-3" /> : index + 1}
                     </span>
-                    <span className="text-xs leading-relaxed" style={{ color: isActiveSubStage ? palette.text : palette.textDim }}>
+                    <span className="text-xs leading-relaxed" style={{ color: isComplete ? palette.text : palette.textDim }}>
                       {step}
                     </span>
-                  </div>
+                  </button>
                   )
                 })}
               </div>
@@ -500,6 +1170,19 @@ export function LeadDetailPanel({
           onSubmit={onLogInteraction ?? (() => undefined)}
         />
 
+        {onCreateFollowUp ? (
+          <Button
+            type="button"
+            onClick={openFollowUpModal}
+            className="w-full"
+            variant="outline"
+            style={{ background: palette.bgCard, borderColor: palette.border, color: palette.text }}
+          >
+            <CalendarPlus className="mr-2 h-4 w-4" style={{ color: palette.cyan }} />
+            Schedule Follow-up
+          </Button>
+        ) : null}
+
         <div className="grid gap-4">
           <Card style={{ background: palette.bgCard, borderColor: palette.border }}>
             <CardHeader className="pb-2">
@@ -605,6 +1288,8 @@ export function LeadDetailPanel({
           </Card>
         </div>
       </div>
+
+      {createPortal(overlays, document.body)}
     </div>
   )
 }

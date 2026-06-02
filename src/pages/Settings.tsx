@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Label } from '@/components/ui/label'
+import { PageHeaderTitle } from '@/components/ui/page-header-title'
 import { cn } from '@/lib/utils'
 import { settingsData } from '@/mocks/app-data'
 import { useTheme } from '@/lib/theme-context'
@@ -19,42 +20,53 @@ const integrations = [
 
 export default function SettingsPage() {
   const { palette } = useTheme()
+  const [notice, setNotice] = useState('')
+
+  const saveNotice = (message: string) => {
+    setNotice(message)
+  }
+
   return (
     <div className="p-4 lg:p-6 space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold" style={{ color: palette.text }}>Settings</h1>
+        <PageHeaderTitle title="Settings" />
         <p className="text-sm mt-1" style={{ color: palette.textMute }}>
           Manage your account, integrations, and preferences
         </p>
       </div>
+      {notice ? (
+        <div className="rounded-lg border px-4 py-3 text-sm" style={{ background: palette.bgCard, borderColor: palette.violetBorder, color: palette.text }}>
+          {notice}
+        </div>
+      ) : null}
 
       {/* Settings Tabs */}
-      <Tabs defaultValue="profile" orientation="vertical" className="flex gap-6">
-        <div className="w-64 shrink-0">
+      <Tabs defaultValue="profile" orientation="vertical" className="flex flex-col gap-6 lg:flex-row">
+        <div className="w-full shrink-0 lg:w-64">
           <Card style={{ background: palette.bgCard, borderColor: palette.border }}>
-            <CardContent className="p-2">
+            <CardContent className="grid grid-cols-2 gap-1 p-2 sm:grid-cols-3 lg:block lg:space-y-1">
               {['profile', 'company', 'integrations', 'notifications', 'security', 'billing'].map((tab) => (
                 <TabsTrigger
                   key={tab}
                   value={tab}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left capitalize transition-colors"
+                  className="w-full justify-start gap-3 rounded-lg px-3 py-2.5 text-left capitalize transition-colors"
                   style={{ color: palette.textDim }}
                 >
-                  {tab === 'profile' && <User className="h-4 w-4" />}
-                  {tab === 'company' && <Globe className="h-4 w-4" />}
-                  {tab === 'integrations' && <Database className="h-4 w-4" />}
-                  {tab === 'notifications' && <Bell className="h-4 w-4" />}
-                  {tab === 'security' && <Shield className="h-4 w-4" />}
-                  {tab === 'billing' && <CreditCard className="h-4 w-4" />}
-                  <span className="text-sm">{tab}</span>
+                  {tab === 'profile' && <User className="h-4 w-4 shrink-0" />}
+                  {tab === 'company' && <Globe className="h-4 w-4 shrink-0" />}
+                  {tab === 'integrations' && <Database className="h-4 w-4 shrink-0" />}
+                  {tab === 'notifications' && <Bell className="h-4 w-4 shrink-0" />}
+                  {tab === 'security' && <Shield className="h-4 w-4 shrink-0" />}
+                  {tab === 'billing' && <CreditCard className="h-4 w-4 shrink-0" />}
+                  <span className="min-w-0 truncate text-sm">{tab}</span>
                 </TabsTrigger>
               ))}
             </CardContent>
           </Card>
         </div>
 
-        <div className="flex-1 space-y-6">
+        <div className="min-w-0 flex-1 space-y-6">
           {/* Profile Settings */}
           <TabsContent value="profile" className="space-y-6">
             <Card style={{ background: palette.bgCard, borderColor: palette.border }}>
@@ -81,7 +93,7 @@ export default function SettingsPage() {
                   </div>
                 </div>
                 <div className="pt-4">
-                  <Button style={{ background: palette.violet }}>
+                  <Button style={{ background: palette.violet }} onClick={() => saveNotice('Profile changes saved in mock mode.')}>
                     <Save className="h-4 w-4 mr-2" />
                     Save Changes
                   </Button>
@@ -116,7 +128,7 @@ export default function SettingsPage() {
                   </div>
                 </div>
                 <div className="pt-4">
-                  <Button style={{ background: palette.violet }}>
+                  <Button style={{ background: palette.violet }} onClick={() => saveNotice('Company changes saved in mock mode.')}>
                     <Save className="h-4 w-4 mr-2" />
                     Save Changes
                   </Button>
@@ -199,7 +211,7 @@ export default function SettingsPage() {
                   <Input type="password" placeholder="••••••••" style={{ background: palette.bg, borderColor: palette.border, color: palette.text }} />
                 </div>
                 <div className="pt-4">
-                  <Button style={{ background: palette.violet }}>
+                  <Button style={{ background: palette.violet }} onClick={() => saveNotice('Password update validated in mock mode.')}>
                     <Key className="h-4 w-4 mr-2" />
                     Update Password
                   </Button>
@@ -224,10 +236,10 @@ export default function SettingsPage() {
                   <p className="text-xs mt-2" style={{ color: palette.textDim }}>3 brands, unlimited franchises, priority support</p>
                 </div>
                 <div className="mt-4 flex gap-2">
-                  <Button variant="outline" style={{ borderColor: palette.border, color: palette.textDim }}>
+                  <Button variant="outline" onClick={() => saveNotice('Invoice list opened in mock mode.')} style={{ borderColor: palette.border, color: palette.textDim }}>
                     View Invoices
                   </Button>
-                  <Button style={{ background: palette.violet }}>
+                  <Button style={{ background: palette.violet }} onClick={() => saveNotice('Upgrade plan request captured.')}>
                     Upgrade Plan
                   </Button>
                 </div>

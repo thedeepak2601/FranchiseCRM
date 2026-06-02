@@ -13,6 +13,12 @@ export default defineConfig({
     port: 5173,
     host: true,
     proxy: {
+      '/ocr-space': {
+        target: 'https://api.ocr.space',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (requestPath) => requestPath.replace(/^\/ocr-space/, ''),
+      },
       '/ocr': {
         target: 'http://localhost:3001',
         changeOrigin: true,
@@ -20,6 +26,11 @@ export default defineConfig({
       '/health': {
         target: 'http://localhost:3001',
         changeOrigin: true,
+      },
+      '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        secure: false,
       },
     },
   },

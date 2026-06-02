@@ -27,6 +27,14 @@ export function formatNumber(num: number): string {
   return num.toString()
 }
 
+export function formatLabel(value: string): string {
+  return value
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ')
+}
+
 export function formatDate(date: string | Date, format: string = 'short'): string {
   const d = new Date(date)
   

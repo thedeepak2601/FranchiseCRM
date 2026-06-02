@@ -12,7 +12,7 @@ export interface LeadOcrResult {
   nextConnectAt?: string
   reference?: string
   rawText: string
-  provider?: 'google-vision'
+  provider?: 'google-vision' | 'ocr-space'
   fieldEvidence?: Partial<Record<OcrFieldKey, string>>
 }
 
@@ -43,6 +43,7 @@ export interface OcrBackendHealth {
 interface VisionTextResult {
   rawText: string
   annotations: VisionAnnotation[]
+  provider?: 'google-vision' | 'ocr-space'
 }
 
 interface VisionVertex {
@@ -73,6 +74,18 @@ const VILLPOWER_FIELD_REGIONS = {
 } as const
 
 const VILLPOWER_PHONE_REGION = { x: 0.33, y: 0.18, width: 0.44, height: 0.09 } as const
+
+function getConfiguredGoogleVisionApiKey() {
+  return (import.meta.env.VITE_GOOGLE_VISION_API_KEY || '').trim()
+}
+
+function getConfiguredOcrSpaceApiKey() {
+  return (import.meta.env.VITE_OCR_SPACE_API_KEY || '').trim()
+}
+
+function isPlausibleGoogleVisionApiKey(apiKey: string) {
+  return /^AIza[0-9A-Za-z_-]{35}$/.test(apiKey)
+}
 
 async function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit, timeoutMs = OCR_REQUEST_TIMEOUT_MS) {
   const controller = new AbortController()
@@ -171,9 +184,35 @@ function cleanPhone(value: string) {
   return digits
 }
 
+function cleanBoxedPhoneDigits(value: string) {
+  const digitLikeChars = value
+    .replace(/[Oo]/g, '0')
+    .replace(/[Il|]/g, '1')
+    .replace(/[Ss]/g, '5')
+    .replace(/[Bb]/g, '8')
+    .replace(/[Qq]/g, '9')
+    .replace(/[^\d]/g, '')
+
+  if (digitLikeChars.length === 10) return digitLikeChars
+  if (digitLikeChars.length > 10) return digitLikeChars.slice(0, 10)
+  return digitLikeChars
+}
+
 function extractPhoneNearLabel(rawText: string) {
-  const labelIndex = rawText.toLowerCase().indexOf('phone no')
-  const scoped = labelIndex >= 0 ? rawText.slice(labelIndex, labelIndex + 180) : rawText
+  const lower = rawText.toLowerCase()
+  const labelMatch = lower.match(/phone\s*no\.?\s*\*?/)
+  const labelIndex = labelMatch?.index ?? -1
+  const scoped = labelIndex >= 0
+    ? rawText.slice(labelIndex + (labelMatch?.[0].length || 0), labelIndex + 260)
+    : rawText
+  const nextLabelMatch = scoped.search(/email\s*id|city|state|investment|notes/i)
+  const phoneBand = nextLabelMatch >= 0 ? scoped.slice(0, nextLabelMatch) : scoped
+  const boxedDigits = labelIndex >= 0 ? cleanBoxedPhoneDigits(phoneBand) : ''
+
+  if (boxedDigits.length >= 8) {
+    return cleanPhone(boxedDigits)
+  }
+
   const digitRuns = scoped.match(/\d{6,}/g) || rawText.match(/\d{6,}/g) || []
   const bestRun = digitRuns.sort((a, b) => b.length - a.length)[0] || ''
   return cleanPhone(bestRun)
@@ -712,7 +751,12 @@ async function runGoogleVisionRequest(file: File, apiKey: string, allowEmpty = f
   )
 
   if (!response.ok) {
-    throw new Error(`Google Vision request failed: ${response.status} ${response.statusText}`)
+    const payload = await response.json().catch(() => null)
+    const message =
+      payload?.error?.message ||
+      payload?.error ||
+      `Google Vision request failed: ${response.status} ${response.statusText}`
+    throw new Error(message)
   }
 
   const payload = await response.json()
@@ -778,11 +822,90 @@ async function runGoogleVisionBackendRequest(file: File, allowEmpty = false): Pr
     throw new Error('Backend OCR did not return readable text')
   }
 
-  return { rawText, annotations }
+  return { rawText, annotations, provider: 'google-vision' }
+}
+
+function getOcrSpaceErrorMessage(payload: unknown, fallback: string) {
+  const response = payload as {
+    ErrorMessage?: string | string[]
+    ErrorDetails?: string
+    error?: string
+    details?: string
+  } | null
+
+  if (!response) return fallback
+
+  if (Array.isArray(response.ErrorMessage)) {
+    return response.ErrorMessage.join(' ')
+  }
+
+  return response.ErrorMessage || response.ErrorDetails || response.error || response.details || fallback
+}
+
+async function runOcrSpaceRequestWithKey(file: File, apiKey: string, allowEmpty = false): Promise<VisionTextResult> {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('language', 'eng')
+  formData.append('OCREngine', '2')
+
+  const endpoint = import.meta.env.DEV ? '/ocr-space/parse/image' : 'https://api.ocr.space/parse/image'
+  const response = await fetchWithTimeout(endpoint, {
+    method: 'POST',
+    headers: {
+      apikey: apiKey,
+    },
+    body: formData,
+  }, 20000)
+
+  const contentType = response.headers.get('content-type') || ''
+  const payload = contentType.includes('application/json')
+    ? await response.json().catch(() => null)
+    : null
+  const textPayload = payload ? '' : await response.text().catch(() => '')
+
+  if (!response.ok) {
+    const message = getOcrSpaceErrorMessage(payload, textPayload || `OCR.space request failed: ${response.status}`)
+    throw new Error(message)
+  }
+
+  if (payload?.IsErroredOnProcessing) {
+    const message = getOcrSpaceErrorMessage(payload, 'OCR.space could not process this image.')
+    throw new Error(message)
+  }
+
+  const rawText = normalizeText(
+    (payload?.ParsedResults || [])
+      .map((result: { ParsedText?: string }) => result.ParsedText || '')
+      .filter(Boolean)
+      .join('\n')
+  )
+
+  if (!rawText && !allowEmpty) {
+    throw new Error('OCR.space did not return readable text')
+  }
+
+  return { rawText, annotations: [], provider: 'ocr-space' }
+}
+
+async function runOcrSpaceRequest(file: File, apiKey: string, allowEmpty = false): Promise<VisionTextResult> {
+  return runOcrSpaceRequestWithKey(file, apiKey, allowEmpty)
 }
 
 export async function getOcrBackendHealth(): Promise<OcrBackendHealth> {
-  if (import.meta.env.VITE_GOOGLE_VISION_API_KEY) {
+  const googleVisionApiKey = getConfiguredGoogleVisionApiKey()
+  const ocrSpaceApiKey = getConfiguredOcrSpaceApiKey()
+
+  if (ocrSpaceApiKey) {
+    return {
+      ok: true,
+      visionReady: true,
+      credentialsConfigured: true,
+      service: 'ocr-space',
+      message: 'OCR.Space API key is configured. Engine 2 will be used for extraction.',
+    }
+  }
+
+  if (googleVisionApiKey && isPlausibleGoogleVisionApiKey(googleVisionApiKey)) {
     return {
       ok: true,
       visionReady: true,
@@ -790,6 +913,10 @@ export async function getOcrBackendHealth(): Promise<OcrBackendHealth> {
       message: 'Google Vision API key is configured.',
     }
   }
+
+  const invalidDirectKeyMessage = googleVisionApiKey
+    ? 'VITE_GOOGLE_VISION_API_KEY is set, but it does not look like a valid Google Vision browser API key. Use a full key that starts with AIza, or remove it and run the local OCR server.'
+    : ''
 
   const endpoint = import.meta.env.VITE_OCR_API_URL || '/ocr'
   const healthUrl = endpoint.replace(/\/ocr(?:\/)?$/, '/health')
@@ -803,36 +930,70 @@ export async function getOcrBackendHealth(): Promise<OcrBackendHealth> {
     const textPayload = payload ? '' : await response.text().catch(() => '')
 
     if (!response.ok) {
+      const serverMessage =
+        payload?.error ||
+        textPayload ||
+        `Health check failed with status ${response.status}.`
+
       return {
         ok: false,
         message:
-          payload?.error ||
-          textPayload ||
-          `Health check failed with status ${response.status}.`,
+          invalidDirectKeyMessage
+            ? `${invalidDirectKeyMessage} Local OCR server status: ${serverMessage}`
+            : serverMessage,
       }
     }
 
     if (payload && typeof payload === 'object') {
-      return payload
+      return {
+        ...payload,
+        message: invalidDirectKeyMessage
+          ? `${invalidDirectKeyMessage} Local OCR server status: ${payload.message || 'ready.'}`
+          : payload.message,
+      }
     }
 
     return {
       ok: false,
-      message: 'Health check returned an unexpected response.',
+      message: invalidDirectKeyMessage
+        ? `${invalidDirectKeyMessage} Local OCR health check returned an unexpected response.`
+        : 'Health check returned an unexpected response.',
     }
   } catch (error) {
     return {
       ok: false,
-      message: error instanceof Error ? error.message : 'Google Vision server is not reachable.',
+      message: invalidDirectKeyMessage
+        ? `${invalidDirectKeyMessage} Local OCR server is not reachable.`
+        : error instanceof Error ? error.message : 'Google Vision server is not reachable.',
     }
   }
 }
 
 export async function extractLeadFieldsFromImage(file: File): Promise<LeadOcrResult> {
-  const googleVisionApiKey = import.meta.env.VITE_GOOGLE_VISION_API_KEY
-  const readText = googleVisionApiKey
-    ? (cropFile: File, allowEmpty = false) => runGoogleVisionRequest(cropFile, googleVisionApiKey, allowEmpty)
-    : (cropFile: File, allowEmpty = false) => runGoogleVisionBackendRequest(cropFile, allowEmpty)
+  const googleVisionApiKey = getConfiguredGoogleVisionApiKey()
+  const ocrSpaceApiKey = getConfiguredOcrSpaceApiKey()
+  const canUseDirectVision = isPlausibleGoogleVisionApiKey(googleVisionApiKey)
+  const readText = async (cropFile: File, allowEmpty = false) => {
+    if (ocrSpaceApiKey) {
+      return runOcrSpaceRequest(cropFile, ocrSpaceApiKey, allowEmpty)
+    }
+
+    if (!canUseDirectVision) {
+      return runGoogleVisionBackendRequest(cropFile, allowEmpty)
+    }
+
+    try {
+      return await runGoogleVisionRequest(cropFile, googleVisionApiKey, allowEmpty)
+    } catch (directError) {
+      try {
+        return await runGoogleVisionBackendRequest(cropFile, allowEmpty)
+      } catch (backendError) {
+        const directMessage = directError instanceof Error ? directError.message : 'Direct Google Vision request failed.'
+        const backendMessage = backendError instanceof Error ? backendError.message : 'Local OCR server request failed.'
+        throw new Error(`${directMessage} Local OCR fallback also failed: ${backendMessage}`)
+      }
+    }
+  }
 
   const normalized = await normalizeVillPowerImage(file)
   const fullPageResult = await readText(normalized.file, true)
@@ -863,10 +1024,10 @@ export async function extractLeadFieldsFromImage(file: File): Promise<LeadOcrRes
     nextConnectAt: coordinateFields.nextConnectAt,
     reference: coordinateFields.reference,
     rawText: [
-      'FULL_PAGE',
+      `FULL_PAGE (${fullPageResult.provider || 'google-vision'})`,
       fullPageResult.rawText,
     ].join('\n\n'),
-    provider: 'google-vision',
+    provider: fullPageResult.provider || 'google-vision',
     fieldEvidence: coordinateFields.fieldEvidence,
   }
 }

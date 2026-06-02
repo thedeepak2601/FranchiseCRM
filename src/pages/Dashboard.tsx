@@ -15,11 +15,13 @@ import {
   AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell
 } from 'recharts'
+import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { PageHeaderTitle } from '@/components/ui/page-header-title'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/lib/theme-context'
 
@@ -88,8 +90,10 @@ const alerts = [
 
 export default function Dashboard() {
   const { palette } = useTheme()
+  const navigate = useNavigate()
   const [timeRange, setTimeRange] = useState('monthly')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [notice, setNotice] = useState('')
 
   const totalRevenue = useMemo(() => 
     revenueData.reduce((sum, d) => sum + d.revenue, 0).toFixed(1), 
@@ -100,9 +104,7 @@ export default function Dashboard() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold" style={{ color: palette.text }}>
-            Welcome back, {brand.name}
-          </h1>
+          <PageHeaderTitle title={`Welcome back, ${brand.name}`} />
           <p className="text-sm mt-1" style={{ color: palette.textMute }}>
             Here's what's happening with your franchise network today.
           </p>
@@ -111,6 +113,7 @@ export default function Dashboard() {
           <Button 
             variant="outline" 
             size="sm"
+            onClick={() => setNotice('Dashboard refreshed with the latest mock data.')}
             style={{ borderColor: palette.border, color: palette.textDim }}
           >
             <RefreshCw className="h-4 w-4 mr-2" />
@@ -118,6 +121,7 @@ export default function Dashboard() {
           </Button>
           <Button 
             size="sm"
+            onClick={() => navigate('/franchises')}
             style={{ background: palette.violet }}
           >
             <Plus className="h-4 w-4 mr-2" />
@@ -125,6 +129,11 @@ export default function Dashboard() {
           </Button>
         </div>
       </div>
+      {notice ? (
+        <div className="rounded-lg border px-4 py-3 text-sm" style={{ background: palette.bgCard, borderColor: palette.violetBorder, color: palette.text }}>
+          {notice}
+        </div>
+      ) : null}
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -316,7 +325,7 @@ export default function Dashboard() {
             <h3 className="text-lg font-semibold" style={{ color: palette.text }}>
               Franchise Performance
             </h3>
-            <Button variant="ghost" size="sm" style={{ color: palette.violet }}>
+            <Button variant="ghost" size="sm" onClick={() => navigate('/franchises')} style={{ color: palette.violet }}>
               View All
               <ChevronRight className="h-4 w-4 ml-1" />
             </Button>
@@ -370,7 +379,7 @@ export default function Dashboard() {
             <h3 className="text-lg font-semibold" style={{ color: palette.text }}>
               Top Performing Franchisees
             </h3>
-            <Button variant="ghost" size="sm" style={{ color: palette.violet }}>
+            <Button variant="ghost" size="sm" onClick={() => navigate('/franchises')} style={{ color: palette.violet }}>
               View All
               <ChevronRight className="h-4 w-4 ml-1" />
             </Button>
@@ -425,7 +434,7 @@ export default function Dashboard() {
             <h3 className="text-lg font-semibold" style={{ color: palette.text }}>
               Recent Transactions
             </h3>
-            <Button variant="ghost" size="sm" style={{ color: palette.violet }}>
+            <Button variant="ghost" size="sm" onClick={() => navigate('/finance')} style={{ color: palette.violet }}>
               View All
               <ChevronRight className="h-4 w-4 ml-1" />
             </Button>
@@ -490,17 +499,19 @@ export default function Dashboard() {
           </h3>
           <div className="space-y-2">
             {[
-              { icon: Building2, label: 'Add New Franchise', color: palette.violet },
-              { icon: Receipt, label: 'Generate Invoice', color: palette.cyan },
-              { icon: Users, label: 'Add Franchisee', color: palette.emerald },
-              { icon: FileText, label: 'View Reports', color: palette.amber },
-              { icon: MessageCircle, label: 'Send Notification', color: palette.rose },
-              { icon: Settings, label: 'Settings', color: palette.textMute },
+              { icon: Building2, label: 'Add New Franchise', color: palette.violet, action: () => navigate('/franchises') },
+              { icon: Receipt, label: 'Generate Invoice', color: palette.cyan, action: () => navigate('/finance') },
+              { icon: Users, label: 'Add Franchisee', color: palette.emerald, action: () => navigate('/leads') },
+              { icon: FileText, label: 'View Reports', color: palette.amber, action: () => navigate('/dashboard') },
+              { icon: MessageCircle, label: 'Send Notification', color: palette.rose, action: () => setNotice('Notification queued in mock mode.') },
+              { icon: Settings, label: 'Settings', color: palette.textMute, action: () => navigate('/settings') },
             ].map((action, index) => {
               const Icon = action.icon
               return (
                 <button
                   key={index}
+                  type="button"
+                  onClick={action.action}
                   className="w-full flex items-center gap-3 p-3 rounded-lg transition-colors hover:bg-white/5"
                 >
                   <div 

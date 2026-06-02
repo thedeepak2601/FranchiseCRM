@@ -169,6 +169,7 @@ export function useCreateInteraction() {
       queryClient.invalidateQueries({ queryKey: ['interactions', leadId] })
       queryClient.invalidateQueries({ queryKey: ['lead', leadId] })
       queryClient.invalidateQueries({ queryKey: ['timeline', leadId] })
+      queryClient.invalidateQueries({ queryKey: ['leads'] })
     },
   })
 }
@@ -220,6 +221,9 @@ export function useCreateFollowUp() {
     }) => followUpApi.createTask(data),
     onSuccess: (_, { leadId }) => {
       queryClient.invalidateQueries({ queryKey: ['followUpTasks', leadId] })
+      queryClient.invalidateQueries({ queryKey: ['lead', leadId] })
+      queryClient.invalidateQueries({ queryKey: ['timeline', leadId] })
+      queryClient.invalidateQueries({ queryKey: ['leads'] })
       queryClient.invalidateQueries({ queryKey: ['myTasks'] })
     },
   })
@@ -230,8 +234,9 @@ export function useCompleteTask() {
   
   return useMutation({
     mutationFn: (name: string) => followUpApi.completeTask(name),
-    onSuccess: () => {
+    onSuccess: (task) => {
       queryClient.invalidateQueries({ queryKey: ['followUpTasks'] })
+      queryClient.invalidateQueries({ queryKey: ['lead', task.leadId] })
       queryClient.invalidateQueries({ queryKey: ['myTasks'] })
     },
   })

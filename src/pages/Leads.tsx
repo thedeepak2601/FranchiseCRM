@@ -1,20 +1,23 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Search, Plus, FileText, AlertCircle, UserPlus, Phone, Target, TrendingUp, Shield, Briefcase, Users, Upload, ScanText, Image as ImageIcon, CheckCircle2, Clock, ListChecks, ShieldCheck, ChevronDown, SlidersHorizontal, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Search, Plus, FileText, AlertCircle, UserPlus, Phone, Target, TrendingUp, Shield, Briefcase, Users, Upload, ScanText, Image as ImageIcon, CheckCircle2, Clock, ListChecks, ShieldCheck, ChevronDown, SlidersHorizontal, X, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { cn } from '@/lib/utils'
+import { ViewToggle, type ViewMode } from '@/components/ui/view-toggle'
+import { PageHeaderTitle } from '@/components/ui/page-header-title'
+import { cn, formatLabel } from '@/lib/utils'
 import { getLeadSubStage } from '@/lib/lead-stage'
 import { LeadDetailPanel, LeadDetailsForm } from '@/components/leads'
-import { useCompleteTask, useCreateInteraction, useCreateLead, useLead, useLeads, useUpdateLead } from '@/hooks/useLeads'
+import { useAddNote, useCompleteTask, useCreateFollowUp, useCreateInteraction, useCreateLead, useLead, useLeads, useUpdateLead, useUpdateLeadStage } from '@/hooks/useLeads'
 import { extractLeadFieldsFromImage, getOcrBackendHealth } from '@/lib/lead-ocr'
 import { STAGE_CONFIG } from '@/types/lead'
-import type { CreateLeadRequest, Lead, LeadSource, LeadStage, LeadStatus } from '@/types/lead'
+import type { CreateInteractionRequest, CreateLeadRequest, FollowUpPriority, Lead, LeadSource, LeadStage, LeadStatus, NextActionType } from '@/types/lead'
 import type { LeadOcrResult, OcrBackendHealth, OcrFieldKey } from '@/lib/lead-ocr'
 import { useTheme } from '@/lib/theme-context'
+
 
 const STAGE_ICONS = {
   lead_capture: UserPlus,
@@ -26,6 +29,8 @@ const STAGE_ICONS = {
   onboarding: Briefcase,
   post_sale: Users,
 } satisfies Record<LeadStage, React.ElementType>
+
+const LEADS_PAGE_SIZE = 12
 
 export default function Leads() {
   const { palette } = useTheme()
@@ -65,6 +70,12 @@ export default function Leads() {
   const [ocrHealthResponseText, setOcrHealthResponseText] = useState('')
   const [leadCaptureForm, setLeadCaptureForm] = useState(emptyLeadCaptureForm)
   const [ocrReviewResult, setOcrReviewResult] = useState<LeadOcrResult | null>(null)
+  const [leadCaptureError, setLeadCaptureError] = useState('')
+  const [leadActionError, setLeadActionError] = useState('')
+  const [isExporting, setIsExporting] = useState(false)
+  const [leadPage, setLeadPage] = useState(1)
+  const [leadViewMode, setLeadViewMode] = useState<ViewMode>('list')
+  const leadRegisterScrollRef = useRef<HTMLDivElement>(null)
 
   const ocrReviewFields: Array<{ key: OcrFieldKey; label: string }> = [
     { key: 'capturedAt', label: 'Date' },
@@ -88,21 +99,30 @@ export default function Leads() {
       source: sourceFilter === 'all' ? undefined : sourceFilter,
       status: statusFilter === 'all' ? undefined : statusFilter,
       assignedTo: ownerFilter === 'all' ? undefined : ownerFilter,
-      page: 1,
-      pageSize: 50,
+      page: leadPage,
+      pageSize: LEADS_PAGE_SIZE,
     }),
-    [ownerFilter, searchTerm, sourceFilter, stageFilter, statusFilter]
+    [leadPage, ownerFilter, searchTerm, sourceFilter, stageFilter, statusFilter]
   )
 
   const leadsQuery = useLeads(filters)
   const leads = leadsQuery.data?.data ?? []
+  const totalLeadRecords = leadsQuery.data?.total ?? 0
+  const totalLeadPages = Math.max(Math.ceil(totalLeadRecords / LEADS_PAGE_SIZE), 1)
+  const hasNextLeadPage = leadPage < totalLeadPages
+  const hasPreviousLeadPage = leadPage > 1
+  const leadRecordStart = totalLeadRecords === 0 ? 0 : (leadPage - 1) * LEADS_PAGE_SIZE + 1
+  const leadRecordEnd = Math.min(leadPage * LEADS_PAGE_SIZE, totalLeadRecords)
   const filterOptionsQuery = useLeads({ page: 1, pageSize: 500 })
   const allLeads = filterOptionsQuery.data?.data ?? leads
   const selectedLeadName = selectedLeadId || leads[0]?.id || ''
   const leadDetailQuery = useLead(selectedLeadName)
   const createLead = useCreateLead()
   const updateLead = useUpdateLead()
+  const updateLeadStage = useUpdateLeadStage()
   const createInteraction = useCreateInteraction()
+  const createFollowUp = useCreateFollowUp()
+  const addNote = useAddNote()
   const completeTask = useCompleteTask()
 
   useEffect(() => {
@@ -181,6 +201,28 @@ export default function Leads() {
   const statusOptions = uniqueSorted(allLeads.map((lead) => lead.status))
   const ownerOptions = uniqueSorted(allLeads.map((lead) => lead.assignedTo || lead.owner))
 
+  useEffect(() => {
+    setLeadPage(1)
+    leadRegisterScrollRef.current?.scrollTo({ top: 0 })
+  }, [ownerFilter, searchTerm, sourceFilter, stageFilter, statusFilter])
+
+  useEffect(() => {
+    leadRegisterScrollRef.current?.scrollTo({ top: 0 })
+  }, [leadPage])
+
+  const handleLeadRegisterScroll = (event: React.UIEvent<HTMLDivElement>) => {
+    const { scrollTop, scrollHeight, clientHeight } = event.currentTarget
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 24
+
+    if (isNearBottom && hasNextLeadPage && !leadsQuery.isFetching) {
+      setLeadPage((current) => current + 1)
+    }
+  }
+
+  const goToLeadPage = (page: number) => {
+    setLeadPage(Math.min(Math.max(page, 1), totalLeadPages))
+  }
+
   const matchesHeaderFilters = (lead: Lead) => {
     const term = searchTerm.trim().toLowerCase()
     const owner = lead.assignedTo || lead.owner
@@ -214,12 +256,33 @@ export default function Leads() {
     setShowLeadDetailsForm(true)
   }
 
-  const handleLeadStatusChange = async (status: LeadStatus) => {
+  const handleLeadStatusChange = async (status: LeadStatus, comments?: string) => {
+    if (!selectedLead) return
+    setLeadActionError('')
+    if (status !== selectedLead.status) {
+      await updateLead.mutateAsync({
+        name: selectedLead.id,
+        data: {
+          status,
+          updated: new Date().toISOString(),
+        },
+      })
+    }
+
+    if (comments?.trim()) {
+      await addNote.mutateAsync({
+        leadId: selectedLead.id,
+        note: `Status note (${formatLabel(status)}): ${comments.trim()}`,
+      })
+    }
+  }
+
+  const handleLeadUpdate = async (data: Partial<Lead>) => {
     if (!selectedLead) return
     await updateLead.mutateAsync({
       name: selectedLead.id,
       data: {
-        status,
+        ...data,
         updated: new Date().toISOString(),
       },
     })
@@ -257,6 +320,8 @@ export default function Leads() {
     }
   }
 
+  const ocrServiceLabel = ocrBackendHealth?.service === 'ocr-space' ? 'OCR.Space' : 'Google Vision'
+
   const updateLeadCaptureField = (field: keyof typeof leadCaptureForm, value: string) => {
     setLeadCaptureForm((current) => ({ ...current, [field]: value }))
   }
@@ -284,6 +349,7 @@ export default function Leads() {
     setOcrRawText('')
     setOcrProvider('')
     setOcrError('')
+    setOcrReviewResult(null)
     if (ocrPreviewUrl) {
       URL.revokeObjectURL(ocrPreviewUrl)
     }
@@ -292,6 +358,24 @@ export default function Leads() {
     } else {
       setOcrPreviewUrl('')
     }
+  }
+
+  const applyOcrResultToForm = (result: LeadOcrResult) => {
+    setLeadCaptureForm((current) => ({
+      ...current,
+      capturedAt: result.capturedAt || current.capturedAt,
+      name: result.name || current.name,
+      phone: result.phone || current.phone,
+      email: result.email || current.email,
+      city: result.city || current.city,
+      state: result.state || current.state,
+      investmentRange: result.investmentRange || current.investmentRange,
+      notes: result.notes || current.notes,
+      approximateClosureDate: result.approximateClosureDate || current.approximateClosureDate,
+      nextConnectMode: result.nextConnectMode || current.nextConnectMode,
+      nextConnectAt: result.nextConnectAt || current.nextConnectAt,
+      reference: result.reference || current.reference,
+    }))
   }
 
   const handleExtractFromImage = async () => {
@@ -303,6 +387,7 @@ export default function Leads() {
       setOcrRawText(result.rawText)
       setOcrProvider(result.provider || '')
       setOcrReviewResult(result)
+      applyOcrResultToForm(result)
     } catch (error) {
       setOcrError(error instanceof Error ? error.message : 'OCR extraction failed')
     } finally {
@@ -319,7 +404,7 @@ export default function Leads() {
       setOcrBackendHealth(health)
       setOcrHealthResponseText(JSON.stringify(health, null, 2))
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Vision connection test failed'
+      const message = error instanceof Error ? error.message : 'OCR connection test failed'
       setOcrError(message)
       setOcrHealthResponseText(
         JSON.stringify(
@@ -339,17 +424,60 @@ export default function Leads() {
 
   const handleLeadCaptureSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    setLeadCaptureError('')
 
     const numericInvestment = parseInt(leadCaptureForm.investmentRange.replace(/\D/g, '').slice(0, 3) || '0', 10)
+    const trimmedName = leadCaptureForm.name.trim()
+    const normalizedPhone = leadCaptureForm.phone.replace(/\D/g, '')
+    const trimmedEmail = leadCaptureForm.email.trim()
+
+    if (trimmedName.length < 2) {
+      setLeadCaptureError('Lead name must be at least 2 characters.')
+      return
+    }
+
+    if (normalizedPhone.length < 10) {
+      setLeadCaptureError('Enter a valid phone number with at least 10 digits.')
+      return
+    }
+
+    if (trimmedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setLeadCaptureError('Enter a valid email address.')
+      return
+    }
+
+    if (!leadCaptureForm.city.trim()) {
+      setLeadCaptureError('City / location is required.')
+      return
+    }
+
+    if (numericInvestment < 1) {
+      setLeadCaptureError('Investment must be at least 1L. Add a value like 20L-30L.')
+      return
+    }
+
+    const duplicateLead = allLeads.find((lead) => {
+      const leadPhone = lead.phone.replace(/\D/g, '')
+      return (
+        (leadPhone && leadPhone === normalizedPhone) ||
+        (trimmedEmail && lead.email?.toLowerCase() === trimmedEmail.toLowerCase())
+      )
+    })
+
+    if (duplicateLead) {
+      setLeadCaptureError(`Duplicate lead found: ${duplicateLead.name} (${duplicateLead.id}). Phone and email must be unique.`)
+      return
+    }
+
     const payload: CreateLeadRequest = {
-      name: leadCaptureForm.name,
-      phone: leadCaptureForm.phone,
-      email: leadCaptureForm.email,
+      name: trimmedName,
+      phone: leadCaptureForm.phone.trim(),
+      email: trimmedEmail,
       source: 'other',
       investment: numericInvestment,
       investmentRange: leadCaptureForm.investmentRange,
-      location: leadCaptureForm.city,
-      state: leadCaptureForm.state,
+      location: leadCaptureForm.city.trim(),
+      state: leadCaptureForm.state.trim(),
       initialNotes: leadCaptureForm.notes,
       expectedClosureDate: leadCaptureForm.approximateClosureDate || undefined,
       nextConnectMode: leadCaptureForm.nextConnectMode || undefined,
@@ -358,31 +486,93 @@ export default function Leads() {
       capturedAt: new Date(leadCaptureForm.capturedAt).toISOString(),
     }
 
-    const createdLead = await createLead.mutateAsync(payload)
-    setSelectedLeadId(createdLead.id)
-    setStageFilter('all')
-    setExpandedStageId(null)
-    closeLeadCaptureForm()
+    try {
+      const createdLead = await createLead.mutateAsync(payload)
+      setSelectedLeadId(createdLead.id)
+      setStageFilter('all')
+      setExpandedStageId(null)
+      closeLeadCaptureForm()
+    } catch (error) {
+      setLeadCaptureError(error instanceof Error ? error.message : 'Lead could not be captured.')
+    }
+  }
+
+  const exportVisibleLeads = () => {
+    setIsExporting(true)
+    const headers = ['Lead ID', 'Name', 'Phone', 'Email', 'Source', 'Investment', 'Location', 'State', 'Stage', 'Status', 'Score', 'Owner']
+    const rows = leads.map((lead) => [
+      lead.id,
+      lead.name,
+      lead.phone,
+      lead.email,
+      lead.source,
+      `${lead.investment}L`,
+      lead.location,
+      lead.state || '',
+      STAGE_CONFIG[lead.stage].name,
+      formatLabel(lead.status),
+      String(lead.score),
+      lead.assignedTo || lead.owner,
+    ])
+    const escapeCsv = (value: string) => `"${value.replace(/"/g, '""')}"`
+    const csv = [headers, ...rows].map((row) => row.map(escapeCsv).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `franchise-crm-leads-${new Date().toISOString().slice(0, 10)}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+    window.setTimeout(() => setIsExporting(false), 250)
+  }
+
+  const handleMoveStage = async (stage: LeadStage) => {
+    if (!selectedLead) return
+    setLeadActionError('')
+    try {
+      await updateLeadStage.mutateAsync({
+        leadId: selectedLead.id,
+        newStage: stage,
+        reason: 'Lifecycle action from lead detail panel',
+      })
+    } catch (error) {
+      setLeadActionError(error instanceof Error ? error.message : 'Stage update failed')
+    }
+  }
+
+  const handleMoveStatus = async (status: LeadStatus, comments?: string) => {
+    try {
+      await handleLeadStatusChange(status, comments)
+    } catch (error) {
+      setLeadActionError(error instanceof Error ? error.message : 'Status update failed')
+    }
+  }
+
+  const handleLogInteraction = (data: CreateInteractionRequest) => {
+    setLeadActionError('')
+    createInteraction.mutate(data, {
+      onError: (error) => setLeadActionError(error instanceof Error ? error.message : 'Interaction could not be logged'),
+    })
+  }
+
+  const handleCreateFollowUp = (data: {
+    leadId: string
+    title: string
+    description: string
+    type: NextActionType
+    scheduledAt: string
+    priority: FollowUpPriority
+    owner: string
+  }) => {
+    setLeadActionError('')
+    createFollowUp.mutate(data, {
+      onError: (error) => setLeadActionError(error instanceof Error ? error.message : 'Follow-up could not be created'),
+    })
   }
 
   const applyOcrReviewResult = () => {
     if (!ocrReviewResult) return
-
-    setLeadCaptureForm((current) => ({
-      ...current,
-      capturedAt: ocrReviewResult.capturedAt || current.capturedAt,
-      name: ocrReviewResult.name || current.name,
-      phone: ocrReviewResult.phone || current.phone,
-      email: ocrReviewResult.email || current.email,
-      city: ocrReviewResult.city || current.city,
-      state: ocrReviewResult.state || current.state,
-      investmentRange: ocrReviewResult.investmentRange || current.investmentRange,
-      notes: ocrReviewResult.notes || current.notes,
-      approximateClosureDate: ocrReviewResult.approximateClosureDate || current.approximateClosureDate,
-      nextConnectMode: ocrReviewResult.nextConnectMode || current.nextConnectMode,
-      nextConnectAt: ocrReviewResult.nextConnectAt || current.nextConnectAt,
-      reference: ocrReviewResult.reference || current.reference,
-    }))
+    applyOcrResultToForm(ocrReviewResult)
     setOcrReviewResult(null)
   }
 
@@ -391,7 +581,7 @@ export default function Leads() {
       <div className="rounded-xl border p-4 lg:p-5" style={{ background: palette.bgCard, borderColor: palette.border }}>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <h1 className="text-2xl font-bold" style={{ color: palette.text }}>Leads & Pipeline</h1>
+            <PageHeaderTitle title="Leads & Pipeline" />
             <p className="text-sm mt-1" style={{ color: palette.textMute }}>
               End-to-end franchise lifecycle management from capture to post-sale.
             </p>
@@ -421,9 +611,9 @@ export default function Leads() {
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" style={{ borderColor: palette.border, color: palette.text }}>
+            <Button variant="outline" onClick={exportVisibleLeads} disabled={isExporting || leads.length === 0} style={{ borderColor: palette.border, color: palette.text }}>
               <FileText className="h-4 w-4 mr-2" />
-              Export
+              {isExporting ? 'Exporting...' : 'Export'}
             </Button>
             <Button style={{ background: palette.violet }} onClick={() => (showLeadCaptureForm ? closeLeadCaptureForm() : setShowLeadCaptureForm(true))}>
               <Plus className="h-4 w-4 mr-2" />
@@ -469,7 +659,7 @@ export default function Leads() {
             >
               <option value="all">All Statuses</option>
               {statusOptions.map((status) => (
-                <option key={status} value={status}>{status.replace('_', ' ')}</option>
+                <option key={status} value={status}>{formatLabel(status)}</option>
               ))}
             </select>
             <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: palette.textMute }} />
@@ -499,6 +689,11 @@ export default function Leads() {
           </CardHeader>
           <CardContent>
             <form className="space-y-4" onSubmit={handleLeadCaptureSubmit}>
+              {leadCaptureError ? (
+                <div className="rounded-lg border p-3 text-sm" style={{ borderColor: palette.rose, color: palette.rose }}>
+                  {leadCaptureError}
+                </div>
+              ) : null}
               <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4">
                 <div className="space-y-3">
                   <label className="text-sm" style={{ color: palette.textMute }}>Upload Lead Form Image</label>
@@ -534,17 +729,17 @@ export default function Leads() {
                   >
                     <div className="font-medium">
                       {isCheckingOcrHealth
-                        ? 'Checking Google Vision server...'
+                        ? 'Checking OCR service...'
                         : ocrBackendHealth?.ok && ocrBackendHealth.visionReady
-                          ? 'Google Vision server connected'
-                          : 'Google Vision server not ready'}
+                          ? `${ocrServiceLabel} connected`
+                          : 'OCR service not ready'}
                     </div>
                     <div>
-                      {ocrBackendHealth?.message || 'Google Vision OCR requires either a valid API key or the local Vision server.'}
+                      {ocrBackendHealth?.message || 'OCR requires an OCR.Space API key.'}
                     </div>
                     {!ocrBackendHealth?.visionReady && !ocrBackendHealth?.credentialsConfigured && (
                       <div>
-                        Set `GOOGLE_APPLICATION_CREDENTIALS` for the local OCR server, or use `VITE_GOOGLE_VISION_API_KEY` for direct Vision access.
+                        Set `VITE_OCR_SPACE_API_KEY` in `.env` and restart the Vite dev server.
                       </div>
                     )}
                     {ocrBackendHealth?.credentialsPath && (
@@ -560,7 +755,7 @@ export default function Leads() {
                     disabled={isTestingOcrConnection}
                     style={{ borderColor: palette.border, color: palette.text }}
                   >
-                    {isTestingOcrConnection ? 'Testing Vision...' : 'Test Vision Connection'}
+                    {isTestingOcrConnection ? 'Testing OCR...' : 'Test OCR Connection'}
                   </Button>
                   <div className="flex gap-2">
                     <Button
@@ -641,6 +836,36 @@ export default function Leads() {
                           </Badge>
                         )}
                       </div>
+                      <div className="rounded-lg border p-3 text-xs" style={{ borderColor: palette.emerald, color: palette.emerald }}>
+                        Extracted data has been filled into this form. Review the fields before capturing the lead.
+                      </div>
+                      {ocrReviewResult ? (
+                        <div className="rounded-lg border p-3" style={{ borderColor: palette.border }}>
+                          <div className="mb-2 text-sm font-medium" style={{ color: palette.text }}>
+                            Extracted Fields
+                          </div>
+                          <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
+                            {ocrReviewFields.map(({ key, label }) => {
+                              const value = ocrReviewResult[key] as string | undefined
+                              const evidence = ocrReviewResult.fieldEvidence?.[key]
+
+                              return (
+                                <div key={key} className="rounded-md p-2" style={{ background: palette.bgElev }}>
+                                  <div className="text-xs font-medium" style={{ color: palette.text }}>{label}</div>
+                                  <div className="mt-0.5 text-xs" style={{ color: value ? palette.textDim : palette.textMute }}>
+                                    {value || 'No value extracted'}
+                                  </div>
+                                  {evidence ? (
+                                    <div className="mt-1 truncate text-[11px]" style={{ color: palette.textMute }} title={evidence}>
+                                      Source: {evidence}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      ) : null}
                       <p className="text-xs" style={{ color: palette.textMute }}>
                         VillPower form parser is optimized for Name, Phone, City, State, notes like "No response / Call not picked / Call not connected", and handwritten follow-up dates.
                       </p>
@@ -654,7 +879,7 @@ export default function Leads() {
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 content-start items-start gap-4 self-start md:grid-cols-2">
                 <div className="space-y-2">
                   <label className="text-sm" style={{ color: palette.textMute }}>Date</label>
                   <Input
@@ -789,97 +1014,8 @@ export default function Leads() {
         </Card>
       )}
 
-      {ocrReviewResult && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div
-            className="w-full max-w-5xl rounded-2xl border p-6 shadow-2xl"
-            style={{ background: palette.bgCard, borderColor: palette.border }}
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="text-xl font-semibold" style={{ color: palette.text }}>Review Extracted Text</h3>
-                <p className="text-sm mt-1" style={{ color: palette.textMute }}>
-                  Check the OCR output against each field before filling the form.
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setOcrReviewResult(null)}
-                style={{ borderColor: palette.border, color: palette.text }}
-              >
-                Close
-              </Button>
-            </div>
-
-            <div className="mt-5 grid grid-cols-1 xl:grid-cols-[1.1fr_1fr] gap-5">
-              <div className="space-y-3">
-                <div className="rounded-xl border p-3" style={{ borderColor: palette.border }}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <ImageIcon className="h-4 w-4" style={{ color: palette.violet }} />
-                    <span className="text-sm font-medium" style={{ color: palette.text }}>Typed OCR Text</span>
-                  </div>
-                  <Textarea
-                    value={ocrReviewResult.rawText}
-                    readOnly
-                    rows={16}
-                    style={{ background: palette.bgCard, borderColor: palette.border, color: palette.text }}
-                  />
-                </div>
-                {ocrPreviewUrl && (
-                  <div className="rounded-xl border p-3" style={{ borderColor: palette.border }}>
-                    <div className="text-sm font-medium mb-2" style={{ color: palette.text }}>Uploaded Image</div>
-                    <img
-                      src={ocrPreviewUrl}
-                      alt="Lead form review"
-                      className="max-h-80 w-full rounded-lg object-contain"
-                    />
-                  </div>
-                )}
-              </div>
-
-              <div className="rounded-xl border p-4" style={{ borderColor: palette.border }}>
-                <div className="text-sm font-medium mb-3" style={{ color: palette.text }}>Field Mapping Review</div>
-                <div className="max-h-[560px] space-y-3 overflow-y-auto pr-1">
-                  {ocrReviewFields.map(({ key, label }) => {
-                    const value = ocrReviewResult[key] as string | undefined
-                    const evidence = ocrReviewResult.fieldEvidence?.[key]
-
-                    return (
-                      <div key={key} className="rounded-lg border p-3" style={{ borderColor: palette.border }}>
-                        <div className="text-sm font-medium" style={{ color: palette.text }}>{label}</div>
-                        <div className="mt-1 text-sm" style={{ color: value ? palette.text : palette.textMute }}>
-                          {value || 'No value extracted'}
-                        </div>
-                        <div className="mt-2 text-xs" style={{ color: palette.textMute }}>
-                          Image text: {evidence || 'No matching text found'}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-5 flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setOcrReviewResult(null)}
-                style={{ borderColor: palette.border, color: palette.text }}
-              >
-                Keep Editing
-              </Button>
-              <Button type="button" style={{ background: palette.violet }} onClick={applyOcrReviewResult}>
-                Apply Extracted Data
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="rounded-xl border overflow-hidden" style={{ background: palette.bgCard, borderColor: palette.border }}>
-        <div className="flex flex-col gap-4 border-b p-5 lg:flex-row lg:items-start lg:justify-between" style={{ borderColor: palette.border }}>
+      <div className="overflow-hidden rounded-xl border shadow-sm" style={{ background: palette.bgCard, borderColor: palette.border }}>
+        <div className="flex flex-col gap-4 border-b p-5 lg:flex-row lg:items-start lg:justify-between" style={{ borderColor: palette.border, background: palette.bgElev }}>
           <div>
             <div className="flex items-center gap-2">
               <ListChecks className="h-5 w-5" style={{ color: palette.violet }} />
@@ -934,13 +1070,14 @@ export default function Leads() {
                 type="button"
                 onClick={() => handleStageHeaderClick(stage.id)}
                 className={cn(
-                  "min-h-[126px] bg-clip-padding p-4 text-left transition-all hover:bg-white/5",
-                  isFiltered && "relative z-10 ring-2 ring-offset-2"
+                  "min-h-[132px] bg-clip-padding p-4 text-left transition-all hover:brightness-[1.02]",
+                  isFiltered && "relative z-10"
                 )}
                 style={{
-                  background: isExpanded ? stage.color + '14' : isFiltered ? stage.color + '0F' : palette.bgCard,
+                  background: isExpanded || isFiltered ? palette.bgElev : palette.bgCard,
                   color: palette.text,
                   borderColor: stage.color,
+                  boxShadow: isFiltered ? `inset 0 0 0 2px ${stage.color}, 0 12px 28px rgba(15,23,42,0.08)` : undefined,
                 }}
               >
                 <div className="flex items-start justify-between gap-3">
@@ -1094,9 +1231,12 @@ export default function Leads() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-4">
-          <div className="rounded-xl border overflow-hidden" style={{ background: palette.bgCard, borderColor: palette.border }}>
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(520px,0.85fr)]">
+        <div className="min-w-0">
+          <div
+            className="flex h-[72vh] min-h-[520px] flex-col overflow-hidden rounded-xl border xl:h-[calc(100vh-7.5rem)]"
+            style={{ background: palette.bgCard, borderColor: palette.border }}
+          >
             <div className="flex flex-col gap-2 border-b p-4 sm:flex-row sm:items-center sm:justify-between" style={{ borderColor: palette.border }}>
               <div>
                 <h2 className="text-base font-semibold" style={{ color: palette.text }}>Lead Register</h2>
@@ -1104,11 +1244,14 @@ export default function Leads() {
                   Search and header filters are applied to this list.
                 </p>
               </div>
-              <Badge variant="secondary">
-                {leads.length} records
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary">
+                  {totalLeadRecords} records
+                </Badge>
+                <ViewToggle value={leadViewMode} onChange={setLeadViewMode} />
+              </div>
             </div>
-            {leadsQuery.isLoading ? (
+            {leadsQuery.isLoading && leads.length === 0 ? (
               <div className="p-8 text-center" style={{ color: palette.textMute }}>Loading leads...</div>
             ) : leadsQuery.isError ? (
               <div className="p-8 text-center space-y-2">
@@ -1123,115 +1266,230 @@ export default function Leads() {
                 No leads found for the current filters.
               </div>
             ) : (
-              <table className="w-full">
-                <thead>
-                  <tr style={{ background: palette.violetBg }}>
-                    <th className="text-left p-4 text-xs font-medium" style={{ color: palette.violet }}>Lead</th>
-                    <th className="text-left p-4 text-xs font-medium" style={{ color: palette.violet }}>Source</th>
-                    <th className="text-left p-4 text-xs font-medium" style={{ color: palette.violet }}>Investment</th>
-                    <th className="text-left p-4 text-xs font-medium" style={{ color: palette.violet }}>Stage</th>
-                    <th className="text-left p-4 text-xs font-medium" style={{ color: palette.violet }}>Score</th>
-                    <th className="text-left p-4 text-xs font-medium" style={{ color: palette.violet }}>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {leads.map((lead) => {
-                    const scoreTone = getScoreTone(lead.score)
-                    const leadStageConfig = STAGE_CONFIG[lead.stage]
-                    const leadSubStage = getLeadSubStage(lead)
+              <>
+                <div
+                  ref={leadRegisterScrollRef}
+                  className="min-h-0 flex-1 overflow-auto"
+                  onScroll={handleLeadRegisterScroll}
+                >
+                  {leadViewMode === 'grid' ? (
+                    <div className="grid grid-cols-1 gap-3 p-3 lg:grid-cols-2">
+                      {leads.map((lead) => {
+                        const scoreTone = getScoreTone(lead.score)
+                        const leadStageConfig = STAGE_CONFIG[lead.stage]
+                        const leadSubStage = getLeadSubStage(lead)
 
-                    return (
-                      <tr
-                        key={lead.id}
-                        className={cn(
-                          "border-t cursor-pointer hover:bg-white/5",
-                          selectedLeadId === lead.id && "bg-white/5"
-                        )}
-                        style={{ borderColor: palette.border }}
-                        onClick={() => setSelectedLeadId(lead.id)}
-                      >
-                        <td className="p-4">
-                          <div className="flex items-center gap-3">
-                            <Avatar className="h-8 w-8">
-                              <AvatarFallback style={{ background: palette.violet, color: 'white', fontSize: '12px' }}>
-                                {lead.name.split(' ').map((part) => part[0]).join('')}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <button
-                                type="button"
-                                className="text-left text-sm font-medium transition-colors hover:underline"
-                                style={{ color: palette.text }}
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  openLeadDetailsForm(lead.id)
-                                }}
-                              >
-                                {lead.name}
-                              </button>
-                              <p className="text-xs" style={{ color: palette.textMute }}>{lead.id}</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="p-4">
-                          <Badge variant="secondary" className="capitalize">{lead.source}</Badge>
-                        </td>
-                        <td className="p-4 text-sm" style={{ color: palette.text }}>Rs {lead.investment}L</td>
-                        <td className="p-4">
-                          <div className="flex items-center gap-2">
-                            <div className="w-16 h-1.5 rounded-full bg-gray-700">
-                              <div
-                                className="h-full rounded-full"
-                                style={{
-                                  width: `${((getStageIndex(lead.stage) + 1) / stageEntries.length) * 100}%`,
-                                  background: leadStageConfig.color,
-                                }}
-                              />
-                            </div>
-                            <span className="text-xs capitalize" style={{ color: palette.textMute }} title={leadStageConfig.name}>
-                              {leadStageConfig.shortName}
-                            </span>
-                          </div>
-                          <div className="mt-1 max-w-[220px] truncate text-[11px]" style={{ color: palette.textMute }} title={leadSubStage.label}>
-                            {leadSubStage.shortDisplay}
-                          </div>
-                        </td>
-                        <td className="p-4">
-                          <div
-                            className="h-8 w-8 rounded-full flex items-center justify-center text-xs font-medium"
-                            style={{ background: scoreTone.bg, color: scoreTone.color }}
+                        return (
+                          <Card
+                            key={lead.id}
+                            className={cn("cursor-pointer transition-colors hover:bg-white/5", selectedLeadId === lead.id && "bg-white/5")}
+                            style={{ background: palette.bgElev, borderColor: palette.border }}
+                            onClick={() => setSelectedLeadId(lead.id)}
                           >
-                            {lead.score}
-                          </div>
-                        </td>
-                        <td className="p-4">
-                          <Badge
-                            variant={
-                              lead.status === 'qualified' || lead.status === 'approved' || lead.status === 'active' || lead.status === 'converted'
-                                ? 'success'
-                                : lead.status === 'new'
-                                  ? 'info'
-                                  : lead.status === 'pending'
-                                    ? 'warning'
-                                    : 'secondary'
-                            }
-                          >
-                            {lead.status.replace('_', ' ')}
-                          </Badge>
-                          <div className="mt-1 text-[11px]" style={{ color: palette.textMute }}>
-                            {leadSubStage.index + 1}/{leadSubStage.total} sub-stage
-                          </div>
-                        </td>
+                            <CardContent className="space-y-3 p-4">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex min-w-0 items-center gap-3">
+                                  <Avatar className="h-9 w-9">
+                                    <AvatarFallback style={{ background: palette.violet, color: 'white', fontSize: '12px' }}>
+                                      {lead.name.split(' ').map((part) => part[0]).join('')}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <div className="min-w-0">
+                                    <button
+                                      type="button"
+                                      className="truncate text-left text-sm font-medium hover:underline"
+                                      style={{ color: palette.text }}
+                                      onClick={(event) => {
+                                        event.stopPropagation()
+                                        openLeadDetailsForm(lead.id)
+                                      }}
+                                    >
+                                      {lead.name}
+                                    </button>
+                                    <p className="text-xs" style={{ color: palette.textMute }}>{lead.id}</p>
+                                  </div>
+                                </div>
+                                <div className="h-8 w-8 rounded-full flex items-center justify-center text-xs font-medium" style={{ background: scoreTone.bg, color: scoreTone.color }}>
+                                  {lead.score}
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                <Badge variant="secondary" className="capitalize">{lead.source}</Badge>
+                                <Badge variant={lead.status === 'qualified' || lead.status === 'approved' || lead.status === 'active' || lead.status === 'converted' ? 'success' : lead.status === 'new' ? 'info' : lead.status === 'pending' ? 'warning' : 'secondary'}>
+                                  {formatLabel(lead.status)}
+                                </Badge>
+                              </div>
+                              <div className="flex items-center justify-between border-t pt-3 text-sm" style={{ borderColor: palette.border }}>
+                                <span style={{ color: palette.text }}>Rs {lead.investment}L</span>
+                                <span style={{ color: palette.textMute }}>{leadStageConfig.shortName} · {leadSubStage.index + 1}/{leadSubStage.total}</span>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                  <table className="w-full min-w-[820px]">
+                    <thead className="sticky top-0 z-10 shadow-sm">
+                      <tr>
+                        <th className="text-left p-4 text-xs font-medium" style={{ background: palette.bgElev, color: palette.violet }}>Lead</th>
+                        <th className="text-left p-4 text-xs font-medium" style={{ background: palette.bgElev, color: palette.violet }}>Source</th>
+                        <th className="text-left p-4 text-xs font-medium" style={{ background: palette.bgElev, color: palette.violet }}>Investment</th>
+                        <th className="text-left p-4 text-xs font-medium" style={{ background: palette.bgElev, color: palette.violet }}>Stage</th>
+                        <th className="text-left p-4 text-xs font-medium" style={{ background: palette.bgElev, color: palette.violet }}>Score</th>
+                        <th className="text-left p-4 text-xs font-medium" style={{ background: palette.bgElev, color: palette.violet }}>Status</th>
                       </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            )}
+                    </thead>
+                    <tbody>
+                      {leads.map((lead) => {
+                        const scoreTone = getScoreTone(lead.score)
+                        const leadStageConfig = STAGE_CONFIG[lead.stage]
+                        const leadSubStage = getLeadSubStage(lead)
+
+                        return (
+                          <tr
+                            key={lead.id}
+                            className={cn(
+                              "border-t cursor-pointer hover:bg-white/5",
+                              selectedLeadId === lead.id && "bg-white/5"
+                            )}
+                            style={{ borderColor: palette.border }}
+                            onClick={() => setSelectedLeadId(lead.id)}
+                          >
+                            <td className="p-4">
+                              <div className="flex items-center gap-3">
+                                <Avatar className="h-8 w-8">
+                                  <AvatarFallback style={{ background: palette.violet, color: 'white', fontSize: '12px' }}>
+                                    {lead.name.split(' ').map((part) => part[0]).join('')}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div>
+                                  <button
+                                    type="button"
+                                    className="text-left text-sm font-medium transition-colors hover:underline"
+                                    style={{ color: palette.text }}
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      openLeadDetailsForm(lead.id)
+                                    }}
+                                  >
+                                    {lead.name}
+                                  </button>
+                                  <p className="text-xs" style={{ color: palette.textMute }}>{lead.id}</p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="p-4">
+                              <Badge variant="secondary" className="capitalize">{lead.source}</Badge>
+                            </td>
+                            <td className="p-4 text-sm" style={{ color: palette.text }}>Rs {lead.investment}L</td>
+                            <td className="p-4">
+                              <div className="flex items-center gap-2">
+                                <div className="w-16 h-1.5 rounded-full bg-gray-700">
+                                  <div
+                                    className="h-full rounded-full"
+                                    style={{
+                                      width: `${((getStageIndex(lead.stage) + 1) / stageEntries.length) * 100}%`,
+                                      background: leadStageConfig.color,
+                                    }}
+                                  />
+                                </div>
+                                <span className="text-xs capitalize" style={{ color: palette.textMute }} title={leadStageConfig.name}>
+                                  {leadStageConfig.shortName}
+                                </span>
+                              </div>
+                              <div className="mt-1 max-w-[220px] truncate text-[11px]" style={{ color: palette.textMute }} title={leadSubStage.label}>
+                                {leadSubStage.shortDisplay}
+                              </div>
+                            </td>
+                            <td className="p-4">
+                              <div
+                                className="h-8 w-8 rounded-full flex items-center justify-center text-xs font-medium"
+                                style={{ background: scoreTone.bg, color: scoreTone.color }}
+                              >
+                                {lead.score}
+                              </div>
+                            </td>
+                            <td className="p-4">
+                              <Badge
+                                variant={
+                                  lead.status === 'qualified' || lead.status === 'approved' || lead.status === 'active' || lead.status === 'converted'
+                                    ? 'success'
+                                    : lead.status === 'new'
+                                      ? 'info'
+                                      : lead.status === 'pending'
+                                        ? 'warning'
+                                        : 'secondary'
+                                }
+                              >
+                                {formatLabel(lead.status)}
+                              </Badge>
+                              <div className="mt-1 text-[11px]" style={{ color: palette.textMute }}>
+                                {leadSubStage.index + 1}/{leadSubStage.total} sub-stage
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                  )}
+                </div>
+
+                <div
+                  className="flex flex-col gap-3 border-t p-3 sm:flex-row sm:items-center sm:justify-between"
+                  style={{ borderColor: palette.border, background: palette.bgElev }}
+                >
+                  <div className="text-xs" style={{ color: palette.textMute }}>
+                    Showing {leadRecordStart}-{leadRecordEnd} of {totalLeadRecords} records · Page {leadPage} of {totalLeadPages}
+                    {leadsQuery.isFetching ? ' · Loading...' : ''}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 gap-1"
+                      disabled={!hasPreviousLeadPage || leadsQuery.isFetching}
+                      onClick={() => goToLeadPage(leadPage - 1)}
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                      Prev
+                    </Button>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: totalLeadPages }, (_, index) => index + 1).map((page) => (
+                        <button
+                          key={page}
+                          type="button"
+                          className="flex h-8 min-w-8 items-center justify-center rounded-md border px-2 text-xs font-medium"
+                          style={{
+                            background: page === leadPage ? palette.violet : palette.bgCard,
+                            borderColor: page === leadPage ? palette.violet : palette.border,
+                            color: page === leadPage ? '#ffffff' : palette.text,
+                          }}
+                          onClick={() => goToLeadPage(page)}
+                        >
+                          {page}
+                        </button>
+                      ))}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 gap-1"
+                      disabled={!hasNextLeadPage || leadsQuery.isFetching}
+                      onClick={() => goToLeadPage(leadPage + 1)}
+                    >
+                      Next
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              </>
+              )}
           </div>
         </div>
 
-        <div className="space-y-4">
+        <div className="min-w-0">
           {!selectedLead ? (
             <Card style={{ background: palette.bgCard, borderColor: palette.border }}>
               <CardHeader>
@@ -1250,15 +1508,33 @@ export default function Leads() {
               </CardContent>
             </Card>
           ) : (
-            <Card style={{ background: palette.bgCard, borderColor: palette.border }} className="overflow-hidden">
+            <Card
+              style={{ background: palette.bgCard, borderColor: palette.border }}
+              className="h-[72vh] min-h-[520px] overflow-hidden flex flex-col xl:sticky xl:top-4 xl:h-[calc(100vh-7.5rem)]"
+            >
+              {leadActionError ? (
+                <div className="shrink-0 border-b p-3 text-sm" style={{ borderColor: palette.rose, color: palette.rose }}>
+                  {leadActionError}
+                </div>
+              ) : null}
               <LeadDetailPanel
                 lead={selectedLead}
                 interactions={selectedLeadDetail?.interactions ?? []}
                 followUpTasks={selectedLeadDetail?.followUpTasks ?? []}
                 timeline={selectedLeadDetail?.timeline ?? []}
                 metrics={selectedLeadDetail?.metrics}
-                onLogInteraction={(data) => createInteraction.mutate(data)}
-                onCompleteTask={(taskId) => completeTask.mutate(taskId)}
+                onUpdateStage={(stage) => handleMoveStage(stage as LeadStage)}
+                onUpdateStatus={handleMoveStatus}
+                onEditLead={() => openLeadDetailsForm(selectedLead.id)}
+                onLogInteraction={handleLogInteraction}
+                onCompleteTask={(taskId) => {
+                  setLeadActionError('')
+                  completeTask.mutate(taskId, {
+                    onError: (error) => setLeadActionError(error instanceof Error ? error.message : 'Task could not be completed'),
+                  })
+                }}
+                onCreateFollowUp={handleCreateFollowUp}
+                className="flex-1 min-h-0"
               />
             </Card>
           )}
@@ -1274,6 +1550,7 @@ export default function Leads() {
           metrics={selectedLeadDetail?.metrics}
           onClose={() => setShowLeadDetailsForm(false)}
           onStatusChange={handleLeadStatusChange}
+          onUpdateLead={handleLeadUpdate}
           isSavingStatus={updateLead.isPending}
         />
       ) : null}

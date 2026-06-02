@@ -10,12 +10,19 @@ import type {
   UpdateLeadStageRequest,
 } from '@/types/lead'
 import {
+  addMockNote,
+  assignMockLead,
   completeMockTask,
+  convertMockLead,
+  createMockFollowUpTask,
   createMockLead,
   createMockInteraction,
+  disqualifyMockLead,
   getMockLead,
   getMockLeads,
+  qualifyMockLead,
   updateMockLead,
+  updateMockStage,
 } from '@/mocks/app-data'
 
 export const leadApiMock = {
@@ -24,21 +31,17 @@ export const leadApiMock = {
   createLead: (data: CreateLeadRequest): Promise<Lead> => createMockLead(data),
   updateLead: (name: string, data: Partial<Lead>): Promise<Lead> => updateMockLead(name, data),
   deleteLead: async (_name: string): Promise<void> => undefined,
-  assignLead: async (_name: string, _assignedTo: string): Promise<Lead> => {
-    throw new Error('Mock assignLead is not implemented yet')
-  },
-  updateStage: async (_data: UpdateLeadStageRequest): Promise<Lead> => {
-    throw new Error('Mock updateStage is not implemented yet')
-  },
-  qualifyLead: async (_name: string, _qualification: unknown): Promise<Lead> => {
-    throw new Error('Mock qualifyLead is not implemented yet')
-  },
-  convertToOpportunity: async (_name: string, _data: unknown): Promise<{ opportunity: string; lead: Lead }> => {
-    throw new Error('Mock convertToOpportunity is not implemented yet')
-  },
-  disqualifyLead: async (_name: string, _reason: string, _notes?: string): Promise<Lead> => {
-    throw new Error('Mock disqualifyLead is not implemented yet')
-  },
+  assignLead: (name: string, assignedTo: string): Promise<Lead> => assignMockLead(name, assignedTo),
+  updateStage: (data: UpdateLeadStageRequest): Promise<Lead> => updateMockStage(data),
+  qualifyLead: (name: string, qualification: {
+    budgetRange: string
+    timelineToInvest: string
+    isDecisionMaker: boolean
+    businessExperience: string
+  }): Promise<Lead> => qualifyMockLead(name, qualification),
+  convertToOpportunity: (name: string, data: { expectedInvestment: number; territory: string; brand?: string }): Promise<{ opportunity: string; lead: Lead }> =>
+    convertMockLead(name, data),
+  disqualifyLead: (name: string, reason: string, notes?: string): Promise<Lead> => disqualifyMockLead(name, reason, notes),
 }
 
 export const interactionApiMock = {
@@ -51,7 +54,7 @@ export const interactionApiMock = {
 }
 
 export const followUpApiMock = {
-  createTask: async (_data: {
+  createTask: (data: {
     leadId: string
     interactionId?: string
     title: string
@@ -60,9 +63,7 @@ export const followUpApiMock = {
     scheduledAt: string
     priority: 'low' | 'medium' | 'high' | 'urgent'
     owner: string
-  }): Promise<FollowUpTask> => {
-    throw new Error('Mock createTask is not implemented yet')
-  },
+  }): Promise<FollowUpTask> => createMockFollowUpTask(data),
   getTasks: async (leadId: string): Promise<FollowUpTask[]> => (await getMockLead(leadId)).followUpTasks,
   getMyTasks: async (): Promise<FollowUpTask[]> => {
     const leadIds = (await getMockLeads()).data.map((lead) => lead.id)
@@ -80,9 +81,7 @@ export const followUpApiMock = {
 
 export const timelineApiMock = {
   getTimeline: async (leadId: string): Promise<TimelineEvent[]> => (await getMockLead(leadId)).timeline,
-  addNote: async (_leadId: string, _note: string): Promise<TimelineEvent> => {
-    throw new Error('Mock addNote is not implemented yet')
-  },
+  addNote: (leadId: string, note: string): Promise<TimelineEvent> => addMockNote(leadId, note),
 }
 
 export const metricsApiMock = {

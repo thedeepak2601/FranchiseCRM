@@ -8,7 +8,9 @@ import type {
   LeadListResponse,
   LeadMetrics,
   LeadSource,
+  NextActionType,
   TimelineEvent,
+  UpdateLeadStageRequest,
 } from '@/types/lead'
 import { STAGE_CONFIG } from '@/types/lead'
 
@@ -1049,6 +1051,123 @@ ensureComprehensiveMockActivity()
 const delay = <T,>(value: T, time = 200) =>
   new Promise<T>((resolve) => setTimeout(() => resolve(value), time))
 
+const normalizePhone = (phone: string) => phone.replace(/\D/g, '')
+
+function validateLeadPayload(data: CreateLeadRequest) {
+  if (data.name.trim().length < 2) {
+    throw new Error('Lead name must be at least 2 characters.')
+  }
+  if (normalizePhone(data.phone).length < 10) {
+    throw new Error('Enter a valid phone number with at least 10 digits.')
+  }
+  if (data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {
+    throw new Error('Enter a valid email address.')
+  }
+  if (!data.location.trim()) {
+    throw new Error('Location is required.')
+  }
+  if (data.investment < 1) {
+    throw new Error('Investment must be at least 1L.')
+  }
+
+  const duplicate = leads.find((lead) => {
+    const samePhone = normalizePhone(lead.phone) === normalizePhone(data.phone)
+    const sameEmail = data.email && lead.email?.toLowerCase() === data.email.toLowerCase()
+    return samePhone || sameEmail
+  })
+
+  if (duplicate) {
+    throw new Error(`Duplicate lead found: ${duplicate.name} (${duplicate.id}).`)
+  }
+}
+
+function calculateLeadScore(lead: Lead, leadInteractions = interactions.filter((item) => item.leadId === lead.id)) {
+  const budgetScore: Record<string, number> = {
+    '5-10L': 8,
+    '10-20L': 15,
+    '20-30L': 20,
+    '30-50L': 25,
+    '50L+': 25,
+  }
+  const timelineScore: Record<string, number> = {
+    immediate: 25,
+    '1_month': 20,
+    '3_months': 15,
+    '6_months': 10,
+    exploring: 5,
+  }
+  const budget = budgetScore[lead.budgetRange || ''] ?? Math.min(25, Math.max(0, Math.round(lead.investment / 2)))
+  const timeline = timelineScore[lead.timelineToInvest || ''] ?? 5
+  const authority = lead.isDecisionMaker ? 25 : 0
+  const engagement = Math.min(25, leadInteractions.filter((item) => item.outcome === 'connected').length * 5)
+
+  return Math.min(100, budget + timeline + authority + engagement)
+}
+
+function createTimelineEvent(event: Omit<TimelineEvent, 'id'>) {
+  const timelineEvent: TimelineEvent = {
+    id: `EVT-${String(timeline.length + 1).padStart(3, '0')}`,
+    ...event,
+  }
+  timeline = [timelineEvent, ...timeline]
+  return timelineEvent
+}
+
+function defaultFollowUpForOutcome(outcome: CreateInteractionRequest['outcome']): { type: NextActionType; title: string; hours: number; priority: FollowUpTask['priority'] } | null {
+  if (outcome === 'not_reachable') {
+    return { type: 'call_again', title: 'Retry call', hours: 2, priority: 'high' }
+  }
+  if (outcome === 'busy') {
+    return { type: 'call_again', title: 'Callback prospect', hours: 1, priority: 'medium' }
+  }
+  if (outcome === 'no_response') {
+    return { type: 'follow_up_email', title: 'Follow up tomorrow', hours: 24, priority: 'medium' }
+  }
+  if (outcome === 'scheduled_callback') {
+    return { type: 'call_again', title: 'Scheduled callback', hours: 24, priority: 'high' }
+  }
+  return null
+}
+
+function createFollowUpTask(data: {
+  leadId: string
+  interactionId?: string
+  title: string
+  description: string
+  type: NextActionType
+  scheduledAt: string
+  priority: FollowUpTask['priority']
+  owner: string
+  createdBy: string
+}) {
+  const now = new Date().toISOString()
+  const task: FollowUpTask = {
+    id: `TASK-${String(followUpTasks.length + 1).padStart(3, '0')}`,
+    leadId: data.leadId,
+    interactionId: data.interactionId,
+    title: data.title,
+    description: data.description,
+    type: data.type,
+    scheduledAt: data.scheduledAt,
+    status: 'pending',
+    priority: data.priority,
+    owner: data.owner,
+    createdBy: data.createdBy,
+    created: now,
+    updated: now,
+  }
+  followUpTasks = [...followUpTasks, task]
+  createTimelineEvent({
+    leadId: data.leadId,
+    type: 'follow_up_created',
+    timestamp: now,
+    user: data.createdBy,
+    description: `Created follow-up task: ${task.title}`,
+    taskId: task.id,
+  })
+  return task
+}
+
 export async function getMockLeads(params?: {
   stage?: Lead['stage']
   source?: LeadSource
@@ -1081,11 +1200,15 @@ export async function getMockLeads(params?: {
     )
   }
 
+  const page = params?.page ?? 1
+  const pageSize = params?.pageSize ?? filtered.length
+  const startIndex = (page - 1) * pageSize
+
   return delay({
-    data: filtered,
+    data: filtered.slice(startIndex, startIndex + pageSize),
     total: filtered.length,
-    page: params?.page ?? 1,
-    pageSize: params?.pageSize ?? filtered.length,
+    page,
+    pageSize,
   })
 }
 
@@ -1177,6 +1300,74 @@ export async function updateMockLead(name: string, data: Partial<Lead>): Promise
   return delay(lead)
 }
 
+export async function assignMockLead(name: string, assignedTo: string): Promise<Lead> {
+  const lead = leads.find((item) => item.id === name)
+  if (!lead) {
+    throw new Error(`Lead ${name} not found`)
+  }
+  const now = new Date().toISOString()
+  const previousOwner = lead.assignedTo || lead.owner
+  lead.assignedTo = assignedTo
+  lead.owner = assignedTo
+  lead.assignedAt = now
+  lead.assignedBy = 'Current User'
+  lead.updated = now
+  lead.lastActivity = now
+  createTimelineEvent({
+    leadId: name,
+    type: 'lead_assigned',
+    timestamp: now,
+    user: 'Current User',
+    description: `Lead assigned to ${assignedTo}.`,
+    previousValue: previousOwner,
+    newValue: assignedTo,
+  })
+  return delay(lead)
+}
+
+export async function updateMockStage(data: UpdateLeadStageRequest): Promise<Lead> {
+  const lead = leads.find((item) => item.id === data.leadId)
+  if (!lead) {
+    throw new Error(`Lead ${data.leadId} not found`)
+  }
+
+  const currentIndex = stageSequence.indexOf(lead.stage)
+  const nextIndex = stageSequence.indexOf(data.newStage)
+  if (nextIndex === -1) {
+    throw new Error('Unknown lifecycle stage.')
+  }
+  if (nextIndex > currentIndex + 1) {
+    throw new Error(`Cannot skip from ${STAGE_CONFIG[lead.stage].name} to ${STAGE_CONFIG[data.newStage].name}.`)
+  }
+  if (nextIndex > currentIndex) {
+    const leadInteractions = interactions.filter((item) => item.leadId === lead.id)
+    const requiredInteractions = STAGE_CONFIG[data.newStage].requiredInteractions
+    if (requiredInteractions > 0 && leadInteractions.length < requiredInteractions) {
+      throw new Error(`${STAGE_CONFIG[data.newStage].name} requires ${requiredInteractions} logged interaction${requiredInteractions > 1 ? 's' : ''}.`)
+    }
+    if (data.newStage === 'pipeline' && lead.status !== 'qualified') {
+      throw new Error('Lead must be qualified before moving to the franchise sales pipeline.')
+    }
+  }
+
+  const now = new Date().toISOString()
+  const previousStage = lead.stage
+  lead.stage = data.newStage
+  lead.updated = now
+  lead.lastActivity = now
+  createTimelineEvent({
+    leadId: lead.id,
+    type: 'stage_changed',
+    timestamp: now,
+    user: lead.assignedTo || lead.owner,
+    description: data.reason || `Lead stage moved to ${STAGE_CONFIG[data.newStage].name}.`,
+    previousValue: STAGE_CONFIG[previousStage].name,
+    newValue: STAGE_CONFIG[data.newStage].name,
+    metadata: data.notes ? { notes: data.notes } : undefined,
+  })
+  return delay(lead)
+}
+
 export async function createMockInteraction(data: CreateInteractionRequest): Promise<Interaction> {
   const lead = leads.find((item) => item.id === data.leadId)
   if (!lead) {
@@ -1202,19 +1393,19 @@ export async function createMockInteraction(data: CreateInteractionRequest): Pro
   lead.lastActivity = now
   lead.updated = now
   lead.score = Math.min(100, lead.score + (data.outcome === 'connected' ? 5 : 2))
+  if (lead.stage === 'lead_capture') {
+    lead.stage = 'first_contact'
+    lead.status = 'in_progress'
+  }
 
-  timeline = [
-    {
-      id: `EVT-${String(timeline.length + 1).padStart(3, '0')}`,
-      leadId: data.leadId,
-      type: 'interaction_logged',
-      timestamp: now,
-      user: interaction.salesRep,
-      description: data.notes,
-      interactionId: interaction.id,
-    },
-    ...timeline,
-  ]
+  createTimelineEvent({
+    leadId: data.leadId,
+    type: 'interaction_logged',
+    timestamp: now,
+    user: interaction.salesRep,
+    description: data.notes,
+    interactionId: interaction.id,
+  })
 
   const currentMetrics = metrics[data.leadId] ?? {
     leadId: data.leadId,
@@ -1249,35 +1440,23 @@ export async function createMockInteraction(data: CreateInteractionRequest): Pro
     : 0
   metrics[data.leadId] = currentMetrics
 
-  if (data.nextAction && data.scheduledFollowUp) {
-    const task: FollowUpTask = {
-      id: `TASK-${String(followUpTasks.length + 1).padStart(3, '0')}`,
+  const automaticFollowUp = defaultFollowUpForOutcome(data.outcome)
+  const shouldCreateTask = (data.nextAction && data.scheduledFollowUp) || automaticFollowUp
+  if (shouldCreateTask) {
+    const scheduledAt = data.scheduledFollowUp
+      ? new Date(data.scheduledFollowUp).toISOString()
+      : addHours(now, automaticFollowUp?.hours ?? 24)
+    createFollowUpTask({
       leadId: data.leadId,
       interactionId: interaction.id,
-      title: data.nextAction.replace('_', ' '),
+      title: data.nextAction?.replace('_', ' ') || automaticFollowUp?.title || 'Follow up',
       description: data.nextActionNotes || data.notes,
-      type: data.nextAction,
-      scheduledAt: new Date(data.scheduledFollowUp).toISOString(),
-      status: 'pending',
-      priority: data.outcome === 'connected' ? 'medium' : 'high',
+      type: data.nextAction || automaticFollowUp?.type || 'call_again',
+      scheduledAt,
+      priority: data.outcome === 'connected' ? 'medium' : automaticFollowUp?.priority || 'high',
       owner: lead.assignedTo || lead.owner,
       createdBy: interaction.salesRep,
-      created: now,
-      updated: now,
-    }
-    followUpTasks = [...followUpTasks, task]
-    timeline = [
-      {
-        id: `EVT-${String(timeline.length + 1).padStart(3, '0')}`,
-        leadId: data.leadId,
-        type: 'follow_up_created',
-        timestamp: now,
-        user: interaction.salesRep,
-        description: `Created follow-up task: ${task.title}`,
-        taskId: task.id,
-      },
-      ...timeline,
-    ]
+    })
   }
 
   return delay(interaction)
@@ -1307,6 +1486,7 @@ export async function completeMockTask(name: string): Promise<FollowUpTask> {
 }
 
 export async function createMockLead(data: CreateLeadRequest): Promise<Lead> {
+  validateLeadPayload(data)
   const now = data.capturedAt ? new Date(data.capturedAt).toISOString() : new Date().toISOString()
   const leadNumber = leads.length + 1
   const leadId = `LEAD-${String(leadNumber).padStart(3, '0')}`
@@ -1404,4 +1584,147 @@ export async function createMockLead(data: CreateLeadRequest): Promise<Lead> {
   }
 
   return delay(lead)
+}
+
+export async function qualifyMockLead(
+  name: string,
+  qualification: {
+    budgetRange: string
+    timelineToInvest: string
+    isDecisionMaker: boolean
+    businessExperience: string
+  }
+): Promise<Lead> {
+  const lead = leads.find((item) => item.id === name)
+  if (!lead) {
+    throw new Error(`Lead ${name} not found`)
+  }
+  const leadInteractions = interactions.filter((item) => item.leadId === name)
+  if (leadInteractions.length < 2) {
+    throw new Error('Minimum 2 interactions required for qualification.')
+  }
+  if (!leadInteractions.some((item) => item.outcome === 'connected')) {
+    throw new Error('At least one connected interaction is required for qualification.')
+  }
+  if (!qualification.budgetRange || !qualification.timelineToInvest || !qualification.businessExperience.trim()) {
+    throw new Error('Budget, timeline, and business experience are required for qualification.')
+  }
+
+  const now = new Date().toISOString()
+  Object.assign(lead, {
+    budgetRange: qualification.budgetRange,
+    timelineToInvest: qualification.timelineToInvest,
+    isDecisionMaker: qualification.isDecisionMaker,
+    businessExperience: qualification.businessExperience,
+    status: 'qualified',
+    stage: 'qualification',
+    updated: now,
+    lastActivity: now,
+  })
+  lead.score = calculateLeadScore(lead, leadInteractions)
+  createTimelineEvent({
+    leadId: name,
+    type: 'qualification_completed',
+    timestamp: now,
+    user: lead.assignedTo || lead.owner,
+    description: `Qualification completed with score ${lead.score}.`,
+    metadata: qualification,
+  })
+  return delay(lead)
+}
+
+export async function convertMockLead(
+  name: string,
+  data: { expectedInvestment: number; territory: string; brand?: string }
+): Promise<{ opportunity: string; lead: Lead }> {
+  const lead = leads.find((item) => item.id === name)
+  if (!lead) {
+    throw new Error(`Lead ${name} not found`)
+  }
+  if (lead.status !== 'qualified') {
+    throw new Error('Only qualified leads can be converted.')
+  }
+  if (!data.expectedInvestment || data.expectedInvestment < 1 || !data.territory.trim()) {
+    throw new Error('Expected investment and territory are required.')
+  }
+  const now = new Date().toISOString()
+  const opportunityId = `OPP-${name.replace(/\D/g, '').padStart(3, '0')}`
+  lead.status = 'converted'
+  lead.stage = 'pipeline'
+  lead.opportunityId = opportunityId
+  lead.updated = now
+  lead.lastActivity = now
+  createTimelineEvent({
+    leadId: name,
+    type: 'lead_converted',
+    timestamp: now,
+    user: lead.assignedTo || lead.owner,
+    description: `Lead converted to opportunity ${opportunityId}.`,
+    metadata: data,
+  })
+  return delay({ opportunity: opportunityId, lead })
+}
+
+export async function disqualifyMockLead(name: string, reason: string, notes?: string): Promise<Lead> {
+  const lead = leads.find((item) => item.id === name)
+  if (!lead) {
+    throw new Error(`Lead ${name} not found`)
+  }
+  if (!reason.trim()) {
+    throw new Error('Disqualification reason is required.')
+  }
+  const now = new Date().toISOString()
+  const previousStatus = lead.status
+  lead.status = 'disqualified'
+  lead.updated = now
+  lead.lastActivity = now
+  createTimelineEvent({
+    leadId: name,
+    type: 'lead_disqualified',
+    timestamp: now,
+    user: lead.assignedTo || lead.owner,
+    description: `Lead disqualified: ${reason}`,
+    previousValue: previousStatus,
+    newValue: 'disqualified',
+    metadata: notes ? { notes } : undefined,
+  })
+  return delay(lead)
+}
+
+export async function createMockFollowUpTask(data: {
+  leadId: string
+  interactionId?: string
+  title: string
+  description: string
+  type: string
+  scheduledAt: string
+  priority: 'low' | 'medium' | 'high' | 'urgent'
+  owner: string
+}): Promise<FollowUpTask> {
+  const lead = leads.find((item) => item.id === data.leadId)
+  if (!lead) {
+    throw new Error(`Lead ${data.leadId} not found`)
+  }
+  return delay(createFollowUpTask({
+    ...data,
+    type: data.type as NextActionType,
+    createdBy: data.owner,
+  }))
+}
+
+export async function addMockNote(leadId: string, note: string): Promise<TimelineEvent> {
+  const lead = leads.find((item) => item.id === leadId)
+  if (!lead) {
+    throw new Error(`Lead ${leadId} not found`)
+  }
+  if (!note.trim()) {
+    throw new Error('Note cannot be empty.')
+  }
+  return delay(createTimelineEvent({
+    leadId,
+    type: 'note_added',
+    timestamp: new Date().toISOString(),
+    user: lead.assignedTo || lead.owner,
+    description: note.trim(),
+  }))
 }

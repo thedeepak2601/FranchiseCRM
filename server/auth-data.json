@@ -1,0 +1,14 @@
+{
+  "users": [
+    {
+      "name": "Demo Admin",
+      "email": "demo@franchisecrm.local",
+      "password": "demo123",
+      "role": "Admin"
+    }
+  ],
+  "sessions": {
+    "5eab829abd3e1d7c7c94042c174c9ef0a3030415b9df121abae727ac66ac0047": "demo@franchisecrm.local",
+    "b15f5144b5121a73c45ce2c3c44d810c22414f67a7365646ab485a0d8178aac2": "demo@franchisecrm.local"
+  }
+}
