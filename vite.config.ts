@@ -2,6 +2,8 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
+const authProxyTarget = process.env.VITE_AUTH_PROXY_TARGET || 'http://localhost:3002'
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -28,7 +30,7 @@ export default defineConfig({
         changeOrigin: true,
       },
       '/api': {
-        target: 'http://localhost:8000',
+        target: authProxyTarget,
         changeOrigin: true,
         secure: false,
       },

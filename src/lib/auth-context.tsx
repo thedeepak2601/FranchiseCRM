@@ -16,6 +16,7 @@ interface AuthContextValue {
 }
 
 const AUTH_SESSION_KEY = 'franchise-crm-auth-session'
+const AUTH_TOKEN_KEY = 'franchise-crm-auth-token'
 const AUTH_USERS_KEY = 'franchise-crm-auth-users'
 const API_BASE_URL = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_BASE_URL || '')
 
@@ -30,7 +31,7 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 
 function readStoredUsers() {
   const stored = window.localStorage.getItem(AUTH_USERS_KEY)
-  const users = stored ? (JSON.parse(stored) as typeof DUMMY_AUTH_USER[]) : []
+  const users = stored ? (JSON.parse(stored) as Array<typeof DUMMY_AUTH_USER>) : []
   const hasDummyUser = users.some((user) => user.email.toLowerCase() === DUMMY_AUTH_USER.email)
   return hasDummyUser ? users : [DUMMY_AUTH_USER, ...users]
 }
@@ -47,9 +48,34 @@ function publicUser(user: { name: string; email: string; role: string }) {
   }
 }
 
+function findStoredUser(email: string, password: string) {
+  const normalizedEmail = email.trim().toLowerCase()
+  return readStoredUsers().find(
+    (storedUser) => storedUser.email.toLowerCase() === normalizedEmail && storedUser.password === password
+  )
+}
+
+function saveSession(user: AuthUser, token?: string) {
+  window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(user))
+  if (token) {
+    window.localStorage.setItem(AUTH_TOKEN_KEY, token)
+  }
+}
+
+function clearSession() {
+  window.localStorage.removeItem(AUTH_SESSION_KEY)
+  window.localStorage.removeItem(AUTH_TOKEN_KEY)
+}
+
 async function fetchJson(path: string, options: RequestInit = {}) {
   const url = path.startsWith('http') ? path : `${API_BASE_URL}${path}`
-  const response = await fetch(url, { credentials: 'include', ...options })
+  const token = window.localStorage.getItem(AUTH_TOKEN_KEY)
+  const headers = new Headers(options.headers)
+  if (token && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
+
+  const response = await fetch(url, { credentials: 'include', ...options, headers })
   const payload = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(payload?.error || payload?.message || 'Auth API error')
   return payload
@@ -69,22 +95,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     fetchJson('/api/method/franchise_crm.api.auth_api.get_current_user')
       .then((payload) => {
-        if (payload.is_authenticated && payload.user) {
+        if ((payload.is_authenticated || payload.user) && payload.user) {
           const sessionUser = publicUser({
-            name: payload.user.full_name || payload.user.email,
+            name: payload.user.full_name || payload.user.name || payload.user.email,
             email: payload.user.email,
-            role: payload.user.user_type || 'User',
+            role: payload.user.user_type || payload.user.role || 'User',
           })
-          window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(sessionUser))
+          saveSession(sessionUser)
           setUser(sessionUser)
         } else {
-          window.localStorage.removeItem(AUTH_SESSION_KEY)
+          clearSession()
           setUser(null)
         }
       })
       .catch(() => {
-        window.localStorage.removeItem(AUTH_SESSION_KEY)
-        setUser(null)
+        if (!storedSession) {
+          clearSession()
+          setUser(null)
+        }
       })
       .finally(() => setReady(true))
   }, [])
@@ -94,40 +122,79 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     ready,
     dummyUser: DUMMY_AUTH_USER,
     signIn: async (email, password) => {
-      const payload = await fetchJson('/api/method/franchise_crm.api.auth_api.login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      })
+      const storedUser = findStoredUser(email, password)
+      if (storedUser) {
+        const sessionUser = publicUser(storedUser)
+        saveSession(sessionUser)
+        setUser(sessionUser)
+        return
+      }
 
-      const sessionUser = publicUser({
-        name: payload.user?.name || payload.user?.email,
-        email: payload.user?.email,
-        role: payload.user?.role || 'User',
-      })
-      window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(sessionUser))
+      let sessionUser: AuthUser | null = null
+      let token: string | undefined
+
+      try {
+        const payload = await fetchJson('/api/method/franchise_crm.api.auth_api.login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        })
+
+        sessionUser = publicUser({
+          name: payload.user?.name || payload.user?.email,
+          email: payload.user?.email,
+          role: payload.user?.role || 'User',
+        })
+        token = payload.token
+      } catch {
+        throw new Error('Invalid email or password.')
+      }
+
+      saveSession(sessionUser, token)
       setUser(sessionUser)
     },
     signUp: async (name, email, password) => {
-      const payload = await fetchJson('/api/method/franchise_crm.api.auth_api.signup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password }),
-      })
+      let sessionUser: AuthUser | null = null
+      let token: string | undefined
 
-      const sessionUser = publicUser({
-        name: payload.user?.name || payload.user?.email,
-        email: payload.user?.email,
-        role: payload.user?.role || 'User',
-      })
-      window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(sessionUser))
+      try {
+        const payload = await fetchJson('/api/method/franchise_crm.api.auth_api.signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, email, password }),
+        })
+
+        sessionUser = publicUser({
+          name: payload.user?.name || payload.user?.email,
+          email: payload.user?.email,
+          role: payload.user?.role || 'User',
+        })
+        token = payload.token
+      } catch {
+        const normalizedEmail = email.trim().toLowerCase()
+        const storedUsers = readStoredUsers()
+        if (storedUsers.some((storedUser) => storedUser.email.toLowerCase() === normalizedEmail)) {
+          throw new Error('An account with this email already exists.')
+        }
+
+        const newUser = {
+          name: name.trim(),
+          email: normalizedEmail,
+          password,
+          role: 'Admin',
+        }
+        saveStoredUsers([...storedUsers, newUser])
+        sessionUser = publicUser(newUser)
+      }
+
+      saveSession(sessionUser, token)
       setUser(sessionUser)
     },
     signOut: async () => {
       await fetchJson('/api/method/franchise_crm.api.auth_api.logout', {
         method: 'POST',
       }).catch(() => {})
-      window.localStorage.removeItem(AUTH_SESSION_KEY)
+      clearSession()
       setUser(null)
     },
   }), [user, ready])
