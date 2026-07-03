@@ -1,0 +1,11 @@
+name = "franchisecrm"
+compatibility_date = "2026-07-03"
+type = "javascript"
+
+[build]
+command = "npm run build"
+upload = { format = "service-worker" }
+
+[site]
+bucket = "./dist"
+entry-point = "workers-site"
